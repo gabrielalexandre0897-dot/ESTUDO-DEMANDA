@@ -69,11 +69,11 @@ def fmt(val, dec=2):
     return f"{val:.{dec}f}".replace('.', ',')
 
 def update_cap_geral():
-    if st.session_state['g_bitola'] in TABELA_CABOS:
+    if st.session_state.get('g_bitola') in TABELA_CABOS:
         st.session_state['g_cap'] = float(TABELA_CABOS[st.session_state['g_bitola']])
 
 def update_cap_adm():
-    if st.session_state['a_bitola'] in TABELA_CABOS:
+    if st.session_state.get('a_bitola') in TABELA_CABOS:
         st.session_state['a_cap'] = float(TABELA_CABOS[st.session_state['a_bitola']])
 
 aba_selecionada = st.sidebar.radio(
@@ -661,21 +661,17 @@ elif aba_selecionada == "3. Conclusão & Laudo Técnico":
         st.warning("⚠️ Acesse as Abas 1 e 2 primeiro para carregar todos os cálculos.")
     else:
         p_disp_entrada_kva = g.get("p_disp_menor_kva", 0)
-        p_disp_entrada_80 = p_disp_entrada_kva * 0.8
-        
         p_disp_adm_kva = a.get("p_disp_menor_kva", 0)
-        p_disp_adm_80 = p_disp_adm_kva * 0.8
 
         st.subheader("📊 Quadro Geral Comparativo")
         
-        headers_comp = ["Setor Analisado", "P. Aparente Medida", "P. Disp. Proteção", "P. Disp. Condutor", "P. Disp. Total (Fator Limitante)", "Limite Recomendado (80%)"]
+        headers_comp = ["Setor Analisado", "P. Aparente Medida", "P. Disp. Proteção", "P. Disp. Condutor", "P. Disp. Total (100% Carga)"]
         valores_comp = [
             ["Entrada de Energia (Geral)", "Quadro Administrativo (ADM)"],
             [f"{g.get('p_apar_total',0)/1000:.2f} kVA", f"{a.get('p_apar_total',0)/1000:.2f} kVA"],
             [f"{g.get('p_disp_prot_total',0)/1000:.2f} kVA", f"{a.get('p_disp_prot_total',0)/1000:.2f} kVA"],
             [f"{g.get('p_disp_cond_total',0)/1000:.2f} kVA", f"{a.get('p_disp_cond_total',0)/1000:.2f} kVA"],
-            [f"{p_disp_entrada_kva:.2f} kW", f"{p_disp_adm_kva:.2f} kW"],
-            [f"{p_disp_entrada_80:.2f} kW", f"{p_disp_adm_80:.2f} kW"]
+            [f"{p_disp_entrada_kva:.2f} kW", f"{p_disp_adm_kva:.2f} kW"]
         ]
 
         fig_comp = go.Figure(data=[go.Table(
@@ -683,27 +679,27 @@ elif aba_selecionada == "3. Conclusão & Laudo Técnico":
             cells=dict(values=valores_comp, fill_color=[['#F3F4F6', '#ffffff']*1], align='center', font=dict(color='#1F2937', size=12), height=30)
         )])
 
-        fig_comp.update_layout(title=dict(text="<b>Quadro Geral Comparativo</b>", font=dict(size=16)), margin=dict(l=10, r=10, t=40, b=10), height=220)
+        fig_comp.update_layout(title=dict(text="<b>Quadro Geral Comparativo</b>", font=dict(size=16)), margin=dict(l=10, r=10, t=40, b=10), height=200)
         st.plotly_chart(fig_comp, width='stretch', config={"displayModeBar": True, "toImageButtonOptions": {"format": "png", "filename": "quadro_comparativo", "height": 300, "width": 1000, "scale": 2}})
 
         col_c1, col_c2 = st.columns(2)
         with col_c1:
-            pot_op1 = st.number_input("Opção 1 (kW):", value=7.4, step=0.1)
-            qtd_op1 = int(p_disp_entrada_80 // pot_op1) if pot_op1 > 0 else 0
-            st.success(f"✅ Limite: **{qtd_op1}** unidades de {pot_op1} kW")
+            pot_op1 = st.number_input("Opção 1 (kW):", value=7.4, step=0.1, key="c_pot1")
+            qtd_op1 = int(p_disp_entrada_kva // pot_op1) if pot_op1 > 0 else 0
+            st.success(f"✅ Limite (100%): **{qtd_op1}** unidades de {pot_op1} kW")
         with col_c2:
-            pot_op2 = st.number_input("Opção 2 (kW):", value=3.7, step=0.1)
-            qtd_op2 = int(p_disp_entrada_80 // pot_op2) if pot_op2 > 0 else 0
-            st.success(f"✅ Limite: **{qtd_op2}** unidades de {pot_op2} kW")
+            pot_op2 = st.number_input("Opção 2 (kW):", value=3.7, step=0.1, key="c_pot2")
+            qtd_op2 = int(p_disp_entrada_kva // pot_op2) if pot_op2 > 0 else 0
+            st.success(f"✅ Limite (100%): **{qtd_op2}** unidades de {pot_op2} kW")
 
         st.markdown("---")
         st.subheader("📄 Texto Oficial do Laudo Técnico (Passe o mouse no canto superior direito para COPIAR)")
 
         nome_equip_laudo = "carregadores veiculares" if sigla_tipo == "VE" else "unidades de ar condicionado"
 
-        texto_laudo = f"""A análise dos dados de demanda obtidos revela que a entrada de energia apresenta uma potência disponível de aproximadamente {fmt(p_disp_entrada_kva)} kW. A fim de assegurar margem de segurança e confiabilidade ao sistema elétrico, recomenda-se a utilização de até 80% dessa valor ({fmt(p_disp_entrada_80)} kW), mantendo uma reserva técnica próxima de 20%.
+        texto_laudo = f"""A análise dos dados de demanda obtidos revela que a entrada de energia apresenta uma potência disponível de aproximadamente {fmt(p_disp_entrada_kva)} kW.
 
-De forma similar, o quadro administrativo apresenta uma potência disponível de aproximadamente {fmt(p_disp_adm_kva)} kW, sugerindo limitar o uso a até 80% dessa capacidade ({fmt(p_disp_adm_80)} kW).
+De forma similar, o quadro administrativo apresenta uma potência disponível de aproximadamente {fmt(p_disp_adm_kva)} kW.
 
 Com base nas análises realizadas, recomenda-se adotar como limite de expansão a instalação de, no máximo, {qtd_op1} {nome_equip_laudo} de {fmt(pot_op1)} kW ou, alternativamente, {qtd_op2} {nome_equip_laudo} de {fmt(pot_op2)} kW, considerando cenários sem a implementação de sistema de gerenciamento de carga."""
 
