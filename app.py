@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import numpy as np
+import copy
 
 # Configuração da Página
 st.set_page_config(
@@ -45,8 +46,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("⚡ Estudo de Demanda Elétrica & Capacidade (VE / AC)")
-st.markdown("---")
 
+# Variáveis Globais
 TABELA_CABOS = {
     "0,5 mm² - 750V": 8.0, "0,75 mm² - 750V": 10.0, "1 mm² - 750V": 12.0, "1,5 mm² - 750V": 15.5,
     "2,5 mm² - 750V": 21.0, "4 mm² - 750V": 28.0, "6 mm² - 750V": 36.0, "10 mm² - 750V": 50.0,
@@ -76,11 +77,50 @@ def update_cap_adm():
     if st.session_state.get('a_bitola') in TABELA_CABOS:
         st.session_state['a_cap'] = float(TABELA_CABOS[st.session_state['a_bitola']])
 
-if "dados_geral" not in st.session_state:
-    st.session_state["dados_geral"] = {}
-if "dados_adm" not in st.session_state:
-    st.session_state["dados_adm"] = {}
+# --- INICIALIZAÇÃO DE VARIÁVEIS NA MEMÓRIA ---
+if "dados_geral" not in st.session_state: st.session_state["dados_geral"] = {}
+if "dados_adm" not in st.session_state: st.session_state["dados_adm"] = {}
+if "saved_reports" not in st.session_state: st.session_state["saved_reports"] = {}
+if "reset_key" not in st.session_state: st.session_state["reset_key"] = 0
+if "arquivos_data" not in st.session_state: st.session_state["arquivos_data"] = {}
 
+# Função para resetar e iniciar um novo relatório
+def reset_app():
+    st.session_state["reset_key"] += 1
+    # Mantém apenas o histórico de relatórios salvos e a chave de reset, limpa o resto
+    keys_to_delete = [k for k in st.session_state.keys() if k not in ["saved_reports", "reset_key"]]
+    for k in keys_to_delete:
+        del st.session_state[k]
+    st.session_state["dados_geral"] = {}
+    st.session_state["dados_adm"] = {}
+    st.session_state["arquivos_data"] = {}
+
+# Função para carregar um relatório salvo
+def load_report(nome):
+    report_data = st.session_state["saved_reports"][nome]
+    for k, v in report_data.items():
+        st.session_state[k] = copy.deepcopy(v)
+
+# --- BARRA LATERAL (MENU DE RELATÓRIOS) ---
+st.sidebar.markdown("### 💾 Gerenciador de Relatórios")
+
+if st.sidebar.button("➕ Criar Novo Relatório", type="primary", use_container_width=True):
+    reset_app()
+    st.rerun()
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("**📂 Histórico Salvo**")
+
+if not st.session_state["saved_reports"]:
+    st.sidebar.info("Nenhum relatório salvo no momento.")
+else:
+    for rep_name in st.session_state["saved_reports"]:
+        if st.sidebar.button(f"📄 {rep_name}", use_container_width=True):
+            load_report(rep_name)
+            st.rerun()
+
+
+# Extração de Dados
 def extrair_dados_completos(df):
     try:
         cols_numericas = []
@@ -88,7 +128,6 @@ def extrair_dados_completos(df):
             serie_num = pd.to_numeric(df[col], errors='coerce').dropna()
             if len(serie_num) > 2:
                 cols_numericas.append(col)
-
         if len(cols_numericas) >= 3:
             r = pd.to_numeric(df[cols_numericas[0]], errors='coerce').dropna().values
             s = pd.to_numeric(df[cols_numericas[1]], errors='coerce').dropna().values
@@ -97,14 +136,8 @@ def extrair_dados_completos(df):
                 return pd.Series(r).astype(float), pd.Series(s).astype(float), pd.Series(t).astype(float)
     except Exception:
         pass
-    
-    return pd.Series([25.0, 30.2, 31.29, 28.4, 26.1]), pd.Series([4.5, 5.2, 5.81, 5.0, 4.8]), pd.Series([26.0, 31.0, 32.16, 29.5, 27.0])
+    return None, None, None
 
-
-# ALTERAÇÃO: Trocamos o st.sidebar.radio pelas tabs (abas) integradas.
-# Isso garante que todas as informações se mantenham salvas ao navegar entre elas!
-st.sidebar.markdown("### 📌 Navegação")
-st.sidebar.info("As informações são mantidas salvas automaticamente ao navegar entre as abas.")
 tab1, tab2, tab3 = st.tabs(["🔌 1. Entrada de Energia (Geral)", "🏢 2. Quadro Administrativo (ADM)", "📝 3. Conclusão & Laudo Técnico"])
 
 with tab1:
@@ -115,12 +148,19 @@ with tab1:
         ["Veículos Elétricos (VE)", "Ar Condicionado (AC)"],
         key="g_tipo_analise"
     )
-    
     sigla_tipo = "VE" if "Veículos" in tipo_analise else "AC"
 
-    file_geral = st.file_uploader("📂 Arraste e solte o arquivo Excel (.xlsx) ou CSV do Analisador de Energia:", type=["xlsx", "csv"], key="file_geral")
+    # Chave dinâmica no uploader para ele limpar quando clicar em Novo Relatório
+    file_geral = st.file_uploader("📂 Arraste e solte o arquivo Excel (.xlsx) ou CSV do Analisador de Energia:", type=["xlsx", "csv"], key=f"file_geral_{st.session_state['reset_key']}")
     
+    # Dados Base
     serie_r_base, serie_s_base, serie_t_base = pd.Series([25.0, 30.2, 31.29, 28.4, 26.1]), pd.Series([4.5, 5.2, 5.81, 5.0, 4.8]), pd.Series([26.0, 31.0, 32.16, 29.5, 27.0])
+
+    # Se já tem dados na memória (ex: carregou relatório antigo)
+    if "g_serie_r" in st.session_state["arquivos_data"]:
+        serie_r_base = st.session_state["arquivos_data"]["g_serie_r"]
+        serie_s_base = st.session_state["arquivos_data"]["g_serie_s"]
+        serie_t_base = st.session_state["arquivos_data"]["g_serie_t"]
 
     if file_geral is not None:
         try:
@@ -128,6 +168,9 @@ with tab1:
             sr, ss, st_ser = extrair_dados_completos(df_u)
             if sr is not None and len(sr) > 0:
                 serie_r_base, serie_s_base, serie_t_base = sr, ss, st_ser
+                st.session_state["arquivos_data"]["g_serie_r"] = sr
+                st.session_state["arquivos_data"]["g_serie_s"] = ss
+                st.session_state["arquivos_data"]["g_serie_t"] = st_ser
                 st.success("✅ Medições carregadas com sucesso!")
         except Exception:
             st.warning("⚠️ Usando dados padrão de demonstração.")
@@ -171,7 +214,6 @@ with tab1:
     
     bitola_texto = bitola_sel.replace(" mm² - ", "mm²-")
 
-    # --- INÍCIO DA ALTERAÇÃO 1: Análise Completa posicionada ANTES do Simulador ---
     p_disp_prot_total = max(0.0, (i_prot_total - i_max_pico_base) * tensao_fase) * 3
     p_disp_cond_total = max(0.0, (i_cond_total - i_max_pico_base) * tensao_fase) * 3
     p_disp_menor_kw = min(p_disp_prot_total, p_disp_cond_total) / 1000.0
@@ -186,48 +228,25 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
     st.markdown("📝 **Análise Completa da Entrada de Energia:**")
     st.success(texto_analise_geral)
     st.code(texto_analise_geral, language="text")
-    # --- FIM DA ALTERAÇÃO 1 ---
 
     st.markdown("---")
     
-    # --- Simulador de Cargas VE/AC posicionado ABAIXO ---
     if sigla_tipo == "AC":
         st.subheader("❄️ Simulador de Cargas AC")
         qtd_carregadores = st.number_input("Quantidade de Ar Condicionado a Adicionar (X):", min_value=0, value=2, step=1, key="g_qtd_ac")
-        
-        btu_sel = st.selectbox(
-            "Potência do Ar Condicionado:",
-            ["9.000 BTU/h", "12.000 BTU/h", "18.000 BTU/h", "24.000 BTU/h"],
-            key="g_btu_sel"
-        )
-        
-        if "9.000" in btu_sel:
-            potencia_carregador_kw = 1.0
-        elif "12.000" in btu_sel:
-            potencia_carregador_kw = 1.2
-        elif "18.000" in btu_sel:
-            potencia_carregador_kw = 1.6
-        else:
-            potencia_carregador_kw = 2.0
-            
+        btu_sel = st.selectbox("Potência do Ar Condicionado:", ["9.000 BTU/h", "12.000 BTU/h", "18.000 BTU/h", "24.000 BTU/h"], key="g_btu_sel")
+        if "9.000" in btu_sel: potencia_carregador_kw = 1.0
+        elif "12.000" in btu_sel: potencia_carregador_kw = 1.2
+        elif "18.000" in btu_sel: potencia_carregador_kw = 1.6
+        else: potencia_carregador_kw = 2.0
         st.info(f"Potência unitária considerada para cálculo: **{potencia_carregador_kw:.1f} kW** ({btu_sel})")
     else:
         st.subheader("🚗 Simulador de Cargas VE")
         qtd_carregadores = st.number_input("Quantidade de Carregadores a Adicionar (X):", min_value=0, value=2, step=1, key="g_qtd_ve")
-        
-        ve_sel = st.selectbox(
-            "Potência por Carregador:",
-            ["3.700W (3.7 kW)", "7.400W (7.4 kW)", "11.000W (11.0 kW)"],
-            key="g_ve_sel"
-        )
-        
-        if "3.700" in ve_sel:
-            potencia_carregador_kw = 3.7
-        elif "7.400" in ve_sel:
-            potencia_carregador_kw = 7.4
-        else:
-            potencia_carregador_kw = 11.0
-            
+        ve_sel = st.selectbox("Potência por Carregador:", ["3.700W (3.7 kW)", "7.400W (7.4 kW)", "11.000W (11.0 kW)"], key="g_ve_sel")
+        if "3.700" in ve_sel: potencia_carregador_kw = 3.7
+        elif "7.400" in ve_sel: potencia_carregador_kw = 7.4
+        else: potencia_carregador_kw = 11.0
         st.info(f"Potência unitária considerada para cálculo: **{potencia_carregador_kw:.1f} kW**")
     
     potencia_total_ve_watts = qtd_carregadores * potencia_carregador_kw * 1000
@@ -265,86 +284,30 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
 
     headers_tabela = ["Parâmetro / Métrica", "Fase R", "Fase S", "Fase T", "Referência de Limite"]
     valores_tabela = [
-        [
-            "Corrente Total Medida (A)",
-            "Potência Aparente Referente à Corrente Medida (VA)",
-            f"Potência Aparente Total + {sigla_tipo} (VA)",
-            f"Corrente Pico Total + {sigla_tipo} (A)",
-            f"Capacidade do Cabo ({num_cabos}x {bitola_sel})",
-            "Corrente de Proteção Geral",
-            "Status da Carga vs Limites"
-        ],
-        [
-            f"{i_pico_r_base:.2f} A",
-            f"{p_apar_r_base:.2f} VA",
-            f"{p_apar_r:.2f} VA",
-            f"{i_pico_r:.2f} A",
-            f"{i_cond_total:.2f} A",
-            f"{i_prot_total:.2f} A",
-            status_r
-        ],
-        [
-            f"{i_pico_s_base:.2f} A",
-            f"{p_apar_s_base:.2f} VA",
-            f"{p_apar_s:.2f} VA",
-            f"{i_pico_s:.2f} A",
-            f"{i_cond_total:.2f} A",
-            f"{i_prot_total:.2f} A",
-            status_s
-        ],
-        [
-            f"{i_pico_t_base:.2f} A",
-            f"{p_apar_t_base:.2f} VA",
-            f"{p_apar_t:.2f} VA",
-            f"{i_pico_t:.2f} A",
-            f"{i_cond_total:.2f} A",
-            f"{i_prot_total:.2f} A",
-            status_t
-        ],
-        [
-            "Amostragem Analisador",
-            f"Total: {p_apar_total_base:.2f} VA",
-            f"Total: {p_apar_total:.2f} VA",
-            "Corrente Calculada por Fase",
-            "Limite Máx. dos Condutores",
-            "Limite Máx. das Proteções",
-            "Avaliação por Fase"
-        ]
+        ["Corrente Total Medida (A)", "Potência Aparente Referente à Corrente Medida (VA)", f"Potência Aparente Total + {sigla_tipo} (VA)", f"Corrente Pico Total + {sigla_tipo} (A)", f"Capacidade do Cabo ({num_cabos}x {bitola_sel})", "Corrente de Proteção Geral", "Status da Carga vs Limites"],
+        [f"{i_pico_r_base:.2f} A", f"{p_apar_r_base:.2f} VA", f"{p_apar_r:.2f} VA", f"{i_pico_r:.2f} A", f"{i_cond_total:.2f} A", f"{i_prot_total:.2f} A", status_r],
+        [f"{i_pico_s_base:.2f} A", f"{p_apar_s_base:.2f} VA", f"{p_apar_s:.2f} VA", f"{i_pico_s:.2f} A", f"{i_cond_total:.2f} A", f"{i_prot_total:.2f} A", status_s],
+        [f"{i_pico_t_base:.2f} A", f"{p_apar_t_base:.2f} VA", f"{p_apar_t:.2f} VA", f"{i_pico_t:.2f} A", f"{i_cond_total:.2f} A", f"{i_prot_total:.2f} A", status_t],
+        ["Amostragem Analisador", f"Total: {p_apar_total_base:.2f} VA", f"Total: {p_apar_total:.2f} VA", "Corrente Calculada por Fase", "Limite Máx. dos Condutores", "Limite Máx. das Proteções", "Avaliação por Fase"]
     ]
 
     fig_tabela = go.Figure(data=[go.Table(
-        header=dict(
-            values=headers_tabela,
-            fill_color='#1E3A8A',
-            align='center',
-            font=dict(color='white', size=13)
-        ),
-        cells=dict(
-            values=valores_tabela,
-            fill_color=[['#F3F4F6', '#ffffff', '#F9FAFB', '#ffffff', '#F9FAFB', '#ffffff', '#EFF6FF']*1],
-            align='center',
-            font=dict(color='#1F2937', size=12),
-            height=30
-        )
+        header=dict(values=headers_tabela, fill_color='#1E3A8A', align='center', font=dict(color='white', size=13)),
+        cells=dict(values=valores_tabela, fill_color=[['#F3F4F6', '#ffffff', '#F9FAFB', '#ffffff', '#F9FAFB', '#ffffff', '#EFF6FF']*1], align='center', font=dict(color='#1F2937', size=12), height=30)
     )])
-
-    fig_tabela.update_layout(
-        title=dict(text="<b>Quadro de Potências e Correntes - Entrada de Energia</b>", font=dict(size=16)),
-        margin=dict(l=10, r=10, t=40, b=10),
-        height=320
-    )
+    fig_tabela.update_layout(title=dict(text="<b>Quadro de Potências e Correntes - Entrada de Energia</b>", font=dict(size=16)), margin=dict(l=10, r=10, t=40, b=10), height=320)
 
     st.markdown("---")
     st.subheader("📋 Quadro de Potências e Correntes - Entrada de Energia")
-    st.plotly_chart(fig_tabela, width='stretch', config={"displayModeBar": True, "toImageButtonOptions": {"format": "png", "filename": "quadro_potencias_correntes", "height": 400, "width": 1000, "scale": 2}})
+    st.plotly_chart(fig_tabela, width='stretch', config={"displayModeBar": True})
 
     st.markdown("---")
     st.subheader(f"📈 Gráfico de Evolução de Correntes (Consumo Atual vs Projeção com {sigla_tipo})")
 
     col_cb1, col_cb2, col_cb3 = st.columns(3)
-    show_r = col_cb1.checkbox("Exibir Fases R", value=True)
-    show_s = col_cb2.checkbox("Exibir Fases S", value=True)
-    show_t = col_cb3.checkbox("Exibir Fases T", value=True)
+    show_r = col_cb1.checkbox("Exibir Fases R", value=True, key="chk_r_geral")
+    show_s = col_cb2.checkbox("Exibir Fases S", value=True, key="chk_s_geral")
+    show_t = col_cb3.checkbox("Exibir Fases T", value=True, key="chk_t_geral")
 
     fig = go.Figure()
     if show_r:
@@ -360,25 +323,15 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
     fig.add_hline(y=i_cond_total, line_dash="dash", line_color="#D97706", annotation_text=f"Limite Cabos ({i_cond_total}A)")
     fig.add_hline(y=i_prot_total, line_dash="dot", line_color="#7C3AED", annotation_text=f"Limite Proteção ({i_prot_total}A)")
 
-    fig.update_layout(
-        title=f"Perfil de Correntes por Fase (Consumo Atual vs Com Carga {sigla_tipo} Adicional)",
-        xaxis_title="Amostras / Horários",
-        yaxis_title="Corrente por Fase (A)",
-        template="plotly_white",
-        height=450,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-    )
-    st.plotly_chart(fig, width='stretch', config={"displayModeBar": True, "toImageButtonOptions": {"format": "png", "filename": " grafico_evolucao_correntes", "height": 500, "width": 1000, "scale": 2}})
+    fig.update_layout(title=f"Perfil de Correntes por Fase", xaxis_title="Amostras / Horários", yaxis_title="Corrente por Fase (A)", template="plotly_white", height=450)
+    st.plotly_chart(fig, width='stretch')
 
     ultrapassou_cabo = i_max_pico > i_cond_total
     ultrapassou_prot = i_max_pico > i_prot_total
-    
     status_comporta = "NÃO COMPORTA" if (ultrapassou_cabo or ultrapassou_prot) else "COMPORTA"
     
-    if sigla_tipo == "AC":
-        texto_resumo_cliente = f"O sistema elétrico da Entrada de Energia {status_comporta} o acréscimo de {int(qtd_carregadores)} Unidades de Ar Condicionado de {btu_sel}."
-    else:
-        texto_resumo_cliente = f"O sistema elétrico da Entrada de Energia {status_comporta} o acréscimo de {int(qtd_carregadores)} Carregadores Veiculares de {fmt(potencia_carregador_kw)}KW."
+    if sigla_tipo == "AC": texto_resumo_cliente = f"O sistema elétrico da Entrada de Energia {status_comporta} o acréscimo de {int(qtd_carregadores)} Unidades de Ar Condicionado de {btu_sel}."
+    else: texto_resumo_cliente = f"O sistema elétrico da Entrada de Energia {status_comporta} o acréscimo de {int(qtd_carregadores)} Carregadores Veiculares de {fmt(potencia_carregador_kw)}KW."
 
     st.markdown("📋 **Resumo da Simulação (Pronto para Cópia):**")
     st.code(texto_resumo_cliente, language="text")
@@ -386,17 +339,17 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
 with tab2:
     st.header("🏢 2. Quadro Administrativo (ADM)")
     
-    tipo_analise_adm = st.selectbox(
-        "Selecione o tipo de análise:",
-        ["Veículos Elétricos (VE)", "Ar Condicionado (AC)"],
-        key="a_tipo_analise"
-    )
-    
+    tipo_analise_adm = st.selectbox("Selecione o tipo de análise:", ["Veículos Elétricos (VE)", "Ar Condicionado (AC)"], key="a_tipo_analise")
     sigla_tipo_adm = "VE" if "Veículos" in tipo_analise_adm else "AC"
 
-    file_adm = st.file_uploader("📂 Arraste e solte o arquivo Excel (.xlsx) ou CSV do Quadro ADM:", type=["xlsx", "csv"], key="file_adm")
+    file_adm = st.file_uploader("📂 Arraste e solte o arquivo Excel (.xlsx) ou CSV do Quadro ADM:", type=["xlsx", "csv"], key=f"file_adm_{st.session_state['reset_key']}")
     
     serie_r_base_a, serie_s_base_a, serie_t_base_a = pd.Series([31.46, 28.0, 29.5]), pd.Series([23.06, 21.0, 22.5]), pd.Series([30.53, 27.5, 29.0])
+
+    if "a_serie_r" in st.session_state["arquivos_data"]:
+        serie_r_base_a = st.session_state["arquivos_data"]["a_serie_r"]
+        serie_s_base_a = st.session_state["arquivos_data"]["a_serie_s"]
+        serie_t_base_a = st.session_state["arquivos_data"]["a_serie_t"]
 
     if file_adm is not None:
         try:
@@ -404,16 +357,16 @@ with tab2:
             sr, ss, st_ser = extrair_dados_completos(df_u_adm)
             if sr is not None and len(sr) > 0:
                 serie_r_base_a, serie_s_base_a, serie_t_base_a = sr, ss, st_ser
+                st.session_state["arquivos_data"]["a_serie_r"] = sr
+                st.session_state["arquivos_data"]["a_serie_s"] = ss
+                st.session_state["arquivos_data"]["a_serie_t"] = st_ser
             st.success("✅ Medições lidas automaticamente!")
         except Exception:
             st.warning("⚠️ Usando dados padrão de demonstração para o ADM.")
 
     col1, col2 = st.columns(2)
-    
-    if "a_bitola" not in st.session_state:
-        st.session_state["a_bitola"] = list(TABELA_CABOS.keys())[INDEX_PADRAO]
-    if "a_cap" not in st.session_state:
-        st.session_state["a_cap"] = float(TABELA_CABOS[st.session_state["a_bitola"]])
+    if "a_bitola" not in st.session_state: st.session_state["a_bitola"] = list(TABELA_CABOS.keys())[INDEX_PADRAO]
+    if "a_cap" not in st.session_state: st.session_state["a_cap"] = float(TABELA_CABOS[st.session_state["a_bitola"]])
 
     with col1:
         num_cabos_adm = st.number_input("Número de cabos por fase:", min_value=1, value=1, step=1, key="a_cabos")
@@ -423,7 +376,6 @@ with tab2:
         tensao_fase_adm = st.number_input("Tensão de Fase (V):", value=127.0, key="a_v")
 
     min_len_a = max(1, min(len(serie_r_base_a), len(serie_s_base_a), len(serie_t_base_a)))
-    
     ir_am_max_a = serie_r_base_a.iloc[:min_len_a].max()
     is_am_max_a = serie_s_base_a.iloc[:min_len_a].max()
     it_am_max_a = serie_t_base_a.iloc[:min_len_a].max()
@@ -444,10 +396,8 @@ with tab2:
     pct_condutor_base_a = (i_max_pico_base_a / i_cond_total_a) * 100 if i_cond_total_a > 0 else 0
     pct_dispositivo_base_a = (i_max_pico_base_a / i_prot_total_a) * 100 if i_prot_total_a > 0 else 0
     disp_restante_base_a = i_prot_total_a - i_max_pico_base_a
-    
     bitola_texto_a = bitola_adm.replace(" mm² - ", "mm²-")
 
-    # --- INÍCIO DA ALTERAÇÃO 1.2: Análise Completa ADM posicionada ANTES do Simulador ---
     p_disp_prot_total_a = max(0.0, (i_prot_total_a - i_max_pico_base_a) * tensao_fase_adm) * 3
     p_disp_cond_total_a = max(0.0, (i_cond_total_a - i_max_pico_base_a) * tensao_fase_adm) * 3
     p_disp_menor_kw_a = min(p_disp_prot_total_a, p_disp_cond_total_a) / 1000.0
@@ -463,45 +413,23 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
     st.success(texto_analise_adm)
     st.code(texto_analise_adm, language="text")
 
-    # --- Simulador de Cargas VE/AC ADM posicionado ABAIXO ---
     st.markdown("---")
     if sigla_tipo_adm == "AC":
         st.subheader("❄️ Simulador de Cargas AC (Quadro Administrativo)")
         qtd_carregadores_a = st.number_input("Quantidade de Ar Condicionado a Adicionar (X):", min_value=0, value=1, step=1, key="a_qtd_ac")
-        
-        btu_sel_a = st.selectbox(
-            "Potência do Ar Condicionado:",
-            ["9.000 BTU/h", "12.000 BTU/h", "18.000 BTU/h", "24.000 BTU/h"],
-            key="a_btu_sel"
-        )
-        
-        if "9.000" in btu_sel_a:
-            potencia_carregador_kw_a = 1.0
-        elif "12.000" in btu_sel_a:
-            potencia_carregador_kw_a = 1.2
-        elif "18.000" in btu_sel_a:
-            potencia_carregador_kw_a = 1.6
-        else:
-            potencia_carregador_kw_a = 2.0
-            
+        btu_sel_a = st.selectbox("Potência do Ar Condicionado:", ["9.000 BTU/h", "12.000 BTU/h", "18.000 BTU/h", "24.000 BTU/h"], key="a_btu_sel")
+        if "9.000" in btu_sel_a: potencia_carregador_kw_a = 1.0
+        elif "12.000" in btu_sel_a: potencia_carregador_kw_a = 1.2
+        elif "18.000" in btu_sel_a: potencia_carregador_kw_a = 1.6
+        else: potencia_carregador_kw_a = 2.0
         st.info(f"Potência unitária considerada para cálculo: **{potencia_carregador_kw_a:.1f} kW** ({btu_sel_a})")
     else:
         st.subheader("🚗 Simulador de Cargas VE (Quadro Administrativo)")
         qtd_carregadores_a = st.number_input("Quantidade de Carregadores a Adicionar (X):", min_value=0, value=1, step=1, key="a_qtd_ve")
-        
-        ve_sel_a = st.selectbox(
-            "Potência por Carregador:",
-            ["3.700W (3.7 kW)", "7.400W (7.4 kW)", "11.000W (11.0 kW)"],
-            key="a_ve_sel"
-        )
-        
-        if "3.700" in ve_sel_a:
-            potencia_carregador_kw_a = 3.7
-        elif "7.400" in ve_sel_a:
-            potencia_carregador_kw_a = 7.4
-        else:
-            potencia_carregador_kw_a = 11.0
-            
+        ve_sel_a = st.selectbox("Potência por Carregador:", ["3.700W (3.7 kW)", "7.400W (7.4 kW)", "11.000W (11.0 kW)"], key="a_ve_sel")
+        if "3.700" in ve_sel_a: potencia_carregador_kw_a = 3.7
+        elif "7.400" in ve_sel_a: potencia_carregador_kw_a = 7.4
+        else: potencia_carregador_kw_a = 11.0
         st.info(f"Potência unitária considerada para cálculo: **{potencia_carregador_kw_a:.1f} kW**")
     
     potencia_total_ve_watts_a = qtd_carregadores_a * potencia_carregador_kw_a * 1000
@@ -539,78 +467,22 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
 
     headers_tabela_a = ["Parâmetro / Métrica", "Fase R", "Fase S", "Fase T", "Referência de Limite"]
     valores_tabela_a = [
-        [
-            "Corrente Total Medida (A)",
-            "Potência Aparente Referente à Corrente Medida (VA)",
-            f"Potência Aparente Total + {sigla_tipo_adm} (VA)",
-            f"Corrente Pico Total + {sigla_tipo_adm} (A)",
-            f"Capacidade do Cabo ({num_cabos_adm}x {bitola_adm})",
-            "Corrente de Proteção Geral",
-            "Status da Carga vs Limites"
-        ],
-        [
-            f"{i_pico_r_base_a:.2f} A",
-            f"{p_apar_r_base_a:.2f} VA",
-            f"{p_apar_r_a:.2f} VA",
-            f"{i_pico_r_a:.2f} A",
-            f"{i_cond_total_a:.2f} A",
-            f"{i_prot_total_a:.2f} A",
-            status_r_a
-        ],
-        [
-            f"{i_pico_s_base_a:.2f} A",
-            f"{p_apar_s_base_a:.2f} VA",
-            f"{p_apar_s_a:.2f} VA",
-            f"{i_pico_s_a:.2f} A",
-            f"{i_cond_total_a:.2f} A",
-            f"{i_prot_total_a:.2f} A",
-            status_s_a
-        ],
-        [
-            f"{i_pico_t_base_a:.2f} A",
-            f"{p_apar_t_base_a:.2f} VA",
-            f"{p_apar_t_a:.2f} VA",
-            f"{i_pico_t_a:.2f} A",
-            f"{i_cond_total_a:.2f} A",
-            f"{i_prot_total_a:.2f} A",
-            status_t_a
-        ],
-        [
-            "Amostragem Analisador",
-            f"Total: {p_apar_total_base_a:.2f} VA",
-            f"Total: {p_apar_total_a:.2f} VA",
-            "Corrente Calculada por Fase",
-            "Limite Máx. dos Condutores",
-            "Limite Máx. das Proteções",
-            "Avaliação por Fase"
-        ]
+        ["Corrente Total Medida (A)", "Potência Aparente Referente à Corrente Medida (VA)", f"Potência Aparente Total + {sigla_tipo_adm} (VA)", f"Corrente Pico Total + {sigla_tipo_adm} (A)", f"Capacidade do Cabo ({num_cabos_adm}x {bitola_adm})", "Corrente de Proteção Geral", "Status da Carga vs Limites"],
+        [f"{i_pico_r_base_a:.2f} A", f"{p_apar_r_base_a:.2f} VA", f"{p_apar_r_a:.2f} VA", f"{i_pico_r_a:.2f} A", f"{i_cond_total_a:.2f} A", f"{i_prot_total_a:.2f} A", status_r_a],
+        [f"{i_pico_s_base_a:.2f} A", f"{p_apar_s_base_a:.2f} VA", f"{p_apar_s_a:.2f} VA", f"{i_pico_s_a:.2f} A", f"{i_cond_total_a:.2f} A", f"{i_prot_total_a:.2f} A", status_s_a],
+        [f"{i_pico_t_base_a:.2f} A", f"{p_apar_t_base_a:.2f} VA", f"{p_apar_t_a:.2f} VA", f"{i_pico_t_a:.2f} A", f"{i_cond_total_a:.2f} A", f"{i_prot_total_a:.2f} A", status_t_a],
+        ["Amostragem Analisador", f"Total: {p_apar_total_base_a:.2f} VA", f"Total: {p_apar_total_a:.2f} VA", "Corrente Calculada por Fase", "Limite Máx. dos Condutores", "Limite Máx. das Proteções", "Avaliação por Fase"]
     ]
 
     fig_tabela_a = go.Figure(data=[go.Table(
-        header=dict(
-            values=headers_tabela_a,
-            fill_color='#1E3A8A',
-            align='center',
-            font=dict(color='white', size=13)
-        ),
-        cells=dict(
-            values=valores_tabela_a,
-            fill_color=[['#F3F4F6', '#ffffff', '#F9FAFB', '#ffffff', '#F9FAFB', '#ffffff', '#EFF6FF']*1],
-            align='center',
-            font=dict(color='#1F2937', size=12),
-            height=30
-        )
+        header=dict(values=headers_tabela_a, fill_color='#1E3A8A', align='center', font=dict(color='white', size=13)),
+        cells=dict(values=valores_tabela_a, fill_color=[['#F3F4F6', '#ffffff', '#F9FAFB', '#ffffff', '#F9FAFB', '#ffffff', '#EFF6FF']*1], align='center', font=dict(color='#1F2937', size=12), height=30)
     )])
-
-    fig_tabela_a.update_layout(
-        title=dict(text="<b>Quadro de Potências e Correntes - Quadro Administrativo</b>", font=dict(size=16)),
-        margin=dict(l=10, r=10, t=40, b=10),
-        height=320
-    )
+    fig_tabela_a.update_layout(title=dict(text="<b>Quadro de Potências e Correntes - Quadro Administrativo</b>", font=dict(size=16)), margin=dict(l=10, r=10, t=40, b=10), height=320)
 
     st.markdown("---")
     st.subheader("📋 Quadro de Potências e Correntes - Quadro Administrativo")
-    st.plotly_chart(fig_tabela_a, width='stretch', config={"displayModeBar": True, "toImageButtonOptions": {"format": "png", "filename": "quadro_potencias_adm", "height": 400, "width": 1000, "scale": 2}})
+    st.plotly_chart(fig_tabela_a, width='stretch', config={"displayModeBar": True})
 
     st.markdown("---")
     st.subheader(f"📈 Gráfico de Evolução de Correntes (Consumo Atual vs Projeção com {sigla_tipo_adm})")
@@ -634,35 +506,25 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
     fig_a.add_hline(y=i_cond_total_a, line_dash="dash", line_color="#D97706", annotation_text=f"Limite Cabos ({i_cond_total_a}A)")
     fig_a.add_hline(y=i_prot_total_a, line_dash="dot", line_color="#7C3AED", annotation_text=f"Limite Proteção ({i_prot_total_a}A)")
 
-    fig_a.update_layout(
-        title=f"Perfil de Correntes por Fase - ADM (Consumo Atual vs Com Carga {sigla_tipo_adm} Adicional)",
-        xaxis_title="Amostras / Horários",
-        yaxis_title="Corrente por Fase (A)",
-        template="plotly_white",
-        height=450,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-    )
-    st.plotly_chart(fig_a, width='stretch', config={"displayModeBar": True, "toImageButtonOptions": {"format": "png", "filename": "grafico_evolucao_correntes_adm", "height": 500, "width": 1000, "scale": 2}})
+    fig_a.update_layout(title=f"Perfil de Correntes por Fase - ADM", xaxis_title="Amostras / Horários", yaxis_title="Corrente por Fase (A)", template="plotly_white", height=450)
+    st.plotly_chart(fig_a, width='stretch')
 
     ultrapassou_cabo_a = i_max_pico_a > i_cond_total_a
     ultrapassou_prot_a = i_max_pico_a > i_prot_total_a
-    
     status_comporta_a = "NÃO COMPORTA" if (ultrapassou_cabo_a or ultrapassou_prot_a) else "COMPORTA"
     
-    if sigla_tipo_adm == "AC":
-        texto_resumo_cliente_a = f"O sistema elétrico do Quadro Administrativo {status_comporta_a} o acréscimo de {int(qtd_carregadores_a)} Unidades de Ar Condicionado de {btu_sel_a}."
-    else:
-        texto_resumo_cliente_a = f"O sistema elétrico do Quadro Administrativo {status_comporta_a} o acréscimo de {int(qtd_carregadores_a)} Carregadores Veiculares de {fmt(potencia_carregador_kw_a)}KW."
+    if sigla_tipo_adm == "AC": texto_resumo_cliente_a = f"O sistema elétrico do Quadro Administrativo {status_comporta_a} o acréscimo de {int(qtd_carregadores_a)} Unidades de Ar Condicionado de {btu_sel_a}."
+    else: texto_resumo_cliente_a = f"O sistema elétrico do Quadro Administrativo {status_comporta_a} o acréscimo de {int(qtd_carregadores_a)} Carregadores Veiculares de {fmt(potencia_carregador_kw_a)}KW."
 
     st.markdown("📋 **Resumo da Simulação (Pronto para Cópia):**")
     st.code(texto_resumo_cliente_a, language="text")
+
 
 with tab3:
     st.header("📝 3. Quadro Comparativo & Laudo Técnico")
 
     g = st.session_state.get("dados_geral", {})
     a = st.session_state.get("dados_adm", {})
-
     sigla_tipo = g.get("sigla_tipo", "VE")
 
     if not g or not a:
@@ -686,9 +548,8 @@ with tab3:
             header=dict(values=headers_comp, fill_color='#1E3A8A', align='center', font=dict(color='white', size=13)),
             cells=dict(values=valores_comp, fill_color=[['#F3F4F6', '#ffffff']*1], align='center', font=dict(color='#1F2937', size=12), height=30)
         )])
-
         fig_comp.update_layout(title=dict(text="<b>Quadro Geral Comparativo</b>", font=dict(size=16)), margin=dict(l=10, r=10, t=40, b=10), height=200)
-        st.plotly_chart(fig_comp, width='stretch', config={"displayModeBar": True, "toImageButtonOptions": {"format": "png", "filename": "quadro_comparativo", "height": 300, "width": 1000, "scale": 2}})
+        st.plotly_chart(fig_comp, width='stretch')
 
         col_c1, col_c2 = st.columns(2)
         with col_c1:
@@ -701,18 +562,38 @@ with tab3:
             st.success(f"✅ Limite (100%): **{qtd_op2}** unidades de {pot_op2} kW")
 
         st.markdown("---")
-        
         st.subheader("📄 Texto Oficial do Laudo Técnico (Passe o mouse no canto superior direito para COPIAR)")
 
-        # Cálculos dos 80% de limite de segurança
+        # Cálculos dos 80% de limite de segurança (Adicionado no modelo)
         p_disp_entrada_80 = p_disp_entrada_kva * 0.8
         p_disp_adm_80 = p_disp_adm_kva * 0.8
 
         texto_laudo = f"""De acordo com as medições realizadas, verificou-se que o condomínio dispõe de uma potência de {fmt(p_disp_entrada_kva)} kVA na entrada de energia. Para garantir maior segurança e confiabilidade ao sistema elétrico, recomenda-se a utilização de até 80% desse valor ({fmt(p_disp_entrada_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema.
 
-De forma similar, o quadro administrativo apresenta uma potência disponível de aproximadamente {fmt(p_disp_adm_kva)} kVA. Sugere-se, pelos mesmos critérios de segurança operacional, limitar o uso a até 80% dessa capacidade ({fmt(p_disp_adm_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema.
-
-Em síntese, conclui-se que, nas condições atuais, o condomínio dispõe de capacidade para a instalação de até {int(qtd_op1)} carregadores veiculares de 7.4KW ou, alternativamente, {int(qtd_op2)} carregadores veiculares de 3.7KW, no cenário sem a adoção do sistema de gerenciamento de carga."""
+De forma similar, o quadro administrativo apresenta uma potência disponível de aproximadamente {fmt(p_disp_adm_kva)} kVA. Sugere-se, pelos mesmos critérios de segurança operacional, limitar o uso a até 80% dessa capacidade ({fmt(p_disp_adm_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema."""
 
         st.success(texto_laudo)
         st.code(texto_laudo, language="text")
+
+        # --- NOVA SEÇÃO: SALVAR RELATÓRIO ---
+        st.markdown("---")
+        st.subheader("💾 Salvar Relatório Atual")
+        st.info("Salve o progresso atual para consultá-lo depois usando o menu lateral esquerdo.")
+        
+        col_save1, col_save2 = st.columns([3, 1])
+        with col_save1:
+            nome_novo_relatorio = st.text_input("Dê um nome para este relatório (Ex: Condomínio XYZ - Bloco A):")
+        with col_save2:
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("Salvar Relatório", use_container_width=True):
+                if not nome_novo_relatorio:
+                    st.warning("⚠️ Digite um nome para o relatório antes de salvar.")
+                else:
+                    # Varre a memória e cria uma cópia profunda de todos os inputs do usuário para salvar
+                    estado_salvo = {}
+                    for chave, valor in st.session_state.items():
+                        if chave not in ["saved_reports", "reset_key"] and not chave.startswith("FormSubmitter"):
+                            estado_salvo[chave] = copy.deepcopy(valor)
+                    
+                    st.session_state["saved_reports"][nome_novo_relatorio] = estado_salvo
+                    st.success(f"✅ Relatório '{nome_novo_relatorio}' salvo com sucesso! Confira na aba lateral.")
