@@ -690,14 +690,17 @@ with tab3:
         fig_comp.update_layout(title=dict(text="<b>Quadro Geral Comparativo</b>", font=dict(size=16)), margin=dict(l=10, r=10, t=40, b=10), height=200)
         st.plotly_chart(fig_comp, width='stretch', config={"displayModeBar": True, "toImageButtonOptions": {"format": "png", "filename": "quadro_comparativo", "height": 300, "width": 1000, "scale": 2}})
 
-
-            pot_op1 = "Opção 1 (kW):", value=7.4, step=0.1, key="c_pot1"
+col_c1, col_c2 = st.columns(2)
+        with col_c1:
+            pot_op1 = st.number_input("Opção 1 (kW):", value=7.4, step=0.1, key="c_pot1")
             qtd_op1 = int(p_disp_entrada_kva // pot_op1) if pot_op1 > 0 else 0
-            
-        
-            pot_op2 = "Opção 2 (kW):", value=3.7, step=0.1, key="c_pot2"
+            st.success(f"✅ Limite (100%): **{qtd_op1}** unidades de {pot_op1} kW")
+        with col_c2:
+            pot_op2 = st.number_input("Opção 2 (kW):", value=3.7, step=0.1, key="c_pot2")
             qtd_op2 = int(p_disp_entrada_kva // pot_op2) if pot_op2 > 0 else 0
-
+            st.success(f"✅ Limite (100%): **{qtd_op2}** unidades de {pot_op2} kW")
+            
+            
         st.markdown("---")
         st.subheader("📄 Texto Oficial do Laudo Técnico (Passe o mouse no canto superior direito para COPIAR)")
 
