@@ -690,7 +690,6 @@ with tab3:
         fig_comp.update_layout(title=dict(text="<b>Quadro Geral Comparativo</b>", font=dict(size=16)), margin=dict(l=10, r=10, t=40, b=10), height=200)
         st.plotly_chart(fig_comp, width='stretch', config={"displayModeBar": True, "toImageButtonOptions": {"format": "png", "filename": "quadro_comparativo", "height": 300, "width": 1000, "scale": 2}})
 
-        st.markdown("---")
         st.subheader("📄 Texto Oficial do Laudo Técnico (Passe o mouse no canto superior direito para COPIAR)")
 
         nome_equip_laudo = "carregadores veiculares" if sigla_tipo == "VE" else "unidades de ar condicionado"
