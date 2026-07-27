@@ -76,11 +76,6 @@ def update_cap_adm():
     if st.session_state.get('a_bitola') in TABELA_CABOS:
         st.session_state['a_cap'] = float(TABELA_CABOS[st.session_state['a_bitola']])
 
-aba_selecionada = st.sidebar.radio(
-    "📌 Navegação",
-    ["1. Entrada de Energia (Geral)", "2. Quadro Administrativo (ADM)", "3. Conclusão & Laudo Técnico"]
-)
-
 if "dados_geral" not in st.session_state:
     st.session_state["dados_geral"] = {}
 if "dados_adm" not in st.session_state:
@@ -105,7 +100,14 @@ def extrair_dados_completos(df):
     
     return pd.Series([25.0, 30.2, 31.29, 28.4, 26.1]), pd.Series([4.5, 5.2, 5.81, 5.0, 4.8]), pd.Series([26.0, 31.0, 32.16, 29.5, 27.0])
 
-if aba_selecionada == "1. Entrada de Energia (Geral)":
+
+# ALTERAÇÃO: Trocamos o st.sidebar.radio pelas tabs (abas) integradas.
+# Isso garante que todas as informações se mantenham salvas ao navegar entre elas!
+st.sidebar.markdown("### 📌 Navegação")
+st.sidebar.info("As informações são mantidas salvas automaticamente ao navegar entre as abas.")
+tab1, tab2, tab3 = st.tabs(["🔌 1. Entrada de Energia (Geral)", "🏢 2. Quadro Administrativo (ADM)", "📝 3. Conclusão & Laudo Técnico"])
+
+with tab1:
     st.header("🔌 1. Entrada de Energia (Geral)")
     
     tipo_analise = st.selectbox(
@@ -169,7 +171,26 @@ if aba_selecionada == "1. Entrada de Energia (Geral)":
     
     bitola_texto = bitola_sel.replace(" mm² - ", "mm²-")
 
+    # --- INÍCIO DA ALTERAÇÃO 1: Análise Completa posicionada ANTES do Simulador ---
+    p_disp_prot_total = max(0.0, (i_prot_total - i_max_pico_base) * tensao_fase) * 3
+    p_disp_cond_total = max(0.0, (i_cond_total - i_max_pico_base) * tensao_fase) * 3
+    p_disp_menor_kw = min(p_disp_prot_total, p_disp_cond_total) / 1000.0
+
+    texto_analise_geral = f"""As medições realizadas com o analisador de energia indicaram as correntes de amostragem máximas de {fmt(ir_am_max)}A na fase R, {fmt(is_am_max)}A na fase S e {fmt(it_am_max)}A na fase T.
+O padrão de entrada existente no condomínio conta com {num_cabos} dispositivos de proteção, dessa forma, as correntes de pico consideradas totais do sistema são: {fmt(i_pico_r_base)}A na fase R, {fmt(i_pico_s_base)}A na fase S e {fmt(i_pico_t_base)}A na fase T.
+A alimentação do sistema é realizada por condutor de seção estimada {bitola_texto}, que possui uma capacidade teórica de condução de corrente na ordem de {fmt(i_capacidade_cabo, 0)}A (por fase) em condições usuais de instalação. Dessa forma, a maior corrente de pico medida ({fmt(i_max_pico_base)}A) representa aproximadamente {fmt(pct_condutor_base)}% da capacidade do condutor.
+Considerando a proteção geral da entrada de energia ({num_cabos} x {fmt(i_protecao, 0)} = {fmt(i_prot_total, 0)}A), verifica-se que a maior corrente de pico medida ({fmt(i_max_pico_base)}A) corresponde a aproximadamente {fmt(pct_dispositivo_base)}% da capacidade nominal do dispositivo, restando uma capacidade disponível na ordem de {fmt(disp_restante_base)}A na fase analisada.
+Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_kw)} kW na entrada de energia."""
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("📝 **Análise Completa da Entrada de Energia:**")
+    st.success(texto_analise_geral)
+    st.code(texto_analise_geral, language="text")
+    # --- FIM DA ALTERAÇÃO 1 ---
+
     st.markdown("---")
+    
+    # --- Simulador de Cargas VE/AC posicionado ABAIXO ---
     if sigla_tipo == "AC":
         st.subheader("❄️ Simulador de Cargas AC")
         qtd_carregadores = st.number_input("Quantidade de Ar Condicionado a Adicionar (X):", min_value=0, value=2, step=1, key="g_qtd_ac")
@@ -228,10 +249,6 @@ if aba_selecionada == "1. Entrada de Energia (Geral)":
     p_apar_r, p_apar_s, p_apar_t = i_pico_r * tensao_fase, i_pico_s * tensao_fase, i_pico_t * tensao_fase
     p_apar_total = p_apar_r + p_apar_s + p_apar_t
 
-    p_disp_prot_total = max(0.0, (i_prot_total - i_max_pico_base) * tensao_fase) * 3
-    p_disp_cond_total = max(0.0, (i_cond_total - i_max_pico_base) * tensao_fase) * 3
-    p_disp_menor_kw = min(p_disp_prot_total, p_disp_cond_total) / 1000.0
-
     st.session_state["dados_geral"] = {
         "i_pico_max": i_max_pico, "p_apar_total": p_apar_total,
         "p_disp_prot_total": p_disp_prot_total, "p_disp_cond_total": p_disp_cond_total,
@@ -241,17 +258,6 @@ if aba_selecionada == "1. Entrada de Energia (Geral)":
         "pct_dispositivo": (i_max_pico / i_prot_total) * 100 if i_prot_total > 0 else 0,
         "disp_restante": i_prot_total - i_max_pico, "sigla_tipo": sigla_tipo
     }
-
-    texto_analise_geral = f"""As medições realizadas com o analisador de energia indicaram as correntes de amostragem máximas de {fmt(ir_am_max)}A na fase R, {fmt(is_am_max)}A na fase S e {fmt(it_am_max)}A na fase T.
-O padrão de entrada existente no condomínio conta com {num_cabos} dispositivos de proteção, dessa forma, as correntes de pico consideradas totais do sistema são: {fmt(i_pico_r_base)}A na fase R, {fmt(i_pico_s_base)}A na fase S e {fmt(i_pico_t_base)}A na fase T.
-A alimentação do sistema é realizada por condutor de seção estimada {bitola_texto}, que possui uma capacidade teórica de condução de corrente na ordem de {fmt(i_capacidade_cabo, 0)}A (por fase) em condições usuais de instalação. Dessa forma, a maior corrente de pico medida ({fmt(i_max_pico_base)}A) representa aproximadamente {fmt(pct_condutor_base)}% da capacidade do condutor.
-Considerando a proteção geral da entrada de energia ({num_cabos} x {fmt(i_protecao, 0)} = {fmt(i_prot_total, 0)}A), verifica-se que a maior corrente de pico medida ({fmt(i_max_pico_base)}A) corresponde a aproximadamente {fmt(pct_dispositivo_base)}% da capacidade nominal do dispositivo, restando uma capacidade disponível na ordem de {fmt(disp_restante_base)}A na fase analisada.
-Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_kw)} kW na entrada de energia."""
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("📝 **Análise Completa da Entrada de Energia:**")
-    st.success(texto_analise_geral)
-    st.code(texto_analise_geral, language="text")
 
     status_r = "⚠️ ULTRAPASSA" if i_pico_r > i_prot_total or i_pico_r > i_cond_total else "✅ OK"
     status_s = "⚠️ ULTRAPASSA" if i_pico_s > i_prot_total or i_pico_s > i_cond_total else "✅ OK"
@@ -377,7 +383,7 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
     st.markdown("📋 **Resumo da Simulação (Pronto para Cópia):**")
     st.code(texto_resumo_cliente, language="text")
 
-elif aba_selecionada == "2. Quadro Administrativo (ADM)":
+with tab2:
     st.header("🏢 2. Quadro Administrativo (ADM)")
     
     tipo_analise_adm = st.selectbox(
@@ -441,6 +447,23 @@ elif aba_selecionada == "2. Quadro Administrativo (ADM)":
     
     bitola_texto_a = bitola_adm.replace(" mm² - ", "mm²-")
 
+    # --- INÍCIO DA ALTERAÇÃO 1.2: Análise Completa ADM posicionada ANTES do Simulador ---
+    p_disp_prot_total_a = max(0.0, (i_prot_total_a - i_max_pico_base_a) * tensao_fase_adm) * 3
+    p_disp_cond_total_a = max(0.0, (i_cond_total_a - i_max_pico_base_a) * tensao_fase_adm) * 3
+    p_disp_menor_kw_a = min(p_disp_prot_total_a, p_disp_cond_total_a) / 1000.0
+
+    texto_analise_adm = f"""As medições realizadas com o analisador de energia indicaram as correntes de amostragem máximas de {fmt(ir_am_max_a)}A na fase R, {fmt(is_am_max_a)}A na fase S e {fmt(it_am_max_a)}A na fase T.
+O quadro administrativo existente conta com {num_cabos_adm} dispositivos de proteção, dessa forma, as correntes de pico consideradas totais do sistema são: {fmt(i_pico_r_base_a)}A na fase R, {fmt(i_pico_s_base_a)}A na fase S e {fmt(i_pico_t_base_a)}A na fase T.
+A alimentação do sistema é realizada por condutor de seção estimada {bitola_texto_a}, que possui uma capacidade teórica de condução de corrente na ordem de {fmt(i_capacidade_cabo_adm, 0)}A (por fase) em condições usuais de instalação. Dessa forma, a maior corrente de pico medida ({fmt(i_max_pico_base_a)}A) representa aproximadamente {fmt(pct_condutor_base_a)}% da capacidade do condutor.
+Considerando a proteção do quadro administrativo ({num_cabos_adm} x {fmt(i_protecao_adm, 0)} = {fmt(i_prot_total_a, 0)}A), verifica-se que a maior corrente de pico medida ({fmt(i_max_pico_base_a)}A) corresponde a aproximadamente {fmt(pct_dispositivo_base_a)}% da capacidade nominal do dispositivo, restando uma capacidade disponível na ordem de {fmt(disp_restante_base_a)}A na fase analisada.
+Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_kw_a)} kW no quadro administrativo."""
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("📝 **Análise Completa do Quadro Administrativo:**")
+    st.success(texto_analise_adm)
+    st.code(texto_analise_adm, language="text")
+
+    # --- Simulador de Cargas VE/AC ADM posicionado ABAIXO ---
     st.markdown("---")
     if sigla_tipo_adm == "AC":
         st.subheader("❄️ Simulador de Cargas AC (Quadro Administrativo)")
@@ -500,10 +523,6 @@ elif aba_selecionada == "2. Quadro Administrativo (ADM)":
     p_apar_r_a, p_apar_s_a, p_apar_t_a = i_pico_r_a * tensao_fase_adm, i_pico_s_a * tensao_fase_adm, i_pico_t_a * tensao_fase_adm
     p_apar_total_a = p_apar_r_a + p_apar_s_a + p_apar_t_a
 
-    p_disp_prot_total_a = max(0.0, (i_prot_total_a - i_max_pico_base_a) * tensao_fase_adm) * 3
-    p_disp_cond_total_a = max(0.0, (i_cond_total_a - i_max_pico_base_a) * tensao_fase_adm) * 3
-    p_disp_menor_kw_a = min(p_disp_prot_total_a, p_disp_cond_total_a) / 1000.0
-
     st.session_state["dados_adm"] = {
         "i_pico_max": i_max_pico_a, "p_apar_total": p_apar_total_a,
         "p_disp_prot_total": p_disp_prot_total_a, "p_disp_cond_total": p_disp_cond_total_a,
@@ -513,17 +532,6 @@ elif aba_selecionada == "2. Quadro Administrativo (ADM)":
         "pct_dispositivo": (i_max_pico_a / i_prot_total_a) * 100 if i_prot_total_a > 0 else 0,
         "disp_restante": i_prot_total_a - i_max_pico_a, "sigla_tipo": sigla_tipo_adm
     }
-
-    texto_analise_adm = f"""As medições realizadas com o analisador de energia indicaram as correntes de amostragem máximas de {fmt(ir_am_max_a)}A na fase R, {fmt(is_am_max_a)}A na fase S e {fmt(it_am_max_a)}A na fase T.
-O quadro administrativo existente conta com {num_cabos_adm} dispositivos de proteção, dessa forma, as correntes de pico consideradas totais do sistema são: {fmt(i_pico_r_base_a)}A na fase R, {fmt(i_pico_s_base_a)}A na fase S e {fmt(i_pico_t_base_a)}A na fase T.
-A alimentação do sistema é realizada por condutor de seção estimada {bitola_texto_a}, que possui uma capacidade teórica de condução de corrente na ordem de {fmt(i_capacidade_cabo_adm, 0)}A (por fase) em condições usuais de instalação. Dessa forma, a maior corrente de pico medida ({fmt(i_max_pico_base_a)}A) representa aproximadamente {fmt(pct_condutor_base_a)}% da capacidade do condutor.
-Considerando a proteção do quadro administrativo ({num_cabos_adm} x {fmt(i_protecao_adm, 0)} = {fmt(i_prot_total_a, 0)}A), verifica-se que a maior corrente de pico medida ({fmt(i_max_pico_base_a)}A) corresponde a aproximadamente {fmt(pct_dispositivo_base_a)}% da capacidade nominal do dispositivo, restando uma capacidade disponível na ordem de {fmt(disp_restante_base_a)}A na fase analisada.
-Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_kw_a)} kW no quadro administrativo."""
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("📝 **Análise Completa do Quadro Administrativo:**")
-    st.success(texto_analise_adm)
-    st.code(texto_analise_adm, language="text")
 
     status_r_a = "⚠️ ULTRAPASSA" if i_pico_r_a > i_prot_total_a or i_pico_r_a > i_cond_total_a else "✅ OK"
     status_s_a = "⚠️ ULTRAPASSA" if i_pico_s_a > i_prot_total_a or i_pico_s_a > i_cond_total_a else "✅ OK"
@@ -649,7 +657,7 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
     st.markdown("📋 **Resumo da Simulação (Pronto para Cópia):**")
     st.code(texto_resumo_cliente_a, language="text")
 
-elif aba_selecionada == "3. Conclusão & Laudo Técnico":
+with tab3:
     st.header("📝 3. Quadro Comparativo & Laudo Técnico")
 
     g = st.session_state.get("dados_geral", {})
