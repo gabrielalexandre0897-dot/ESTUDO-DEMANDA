@@ -169,6 +169,45 @@ if aba_selecionada == "1. Entrada de Energia (Geral)":
     
     bitola_texto = bitola_sel.replace(" mm² - ", "mm²-")
 
+    st.markdown("---")
+    if sigla_tipo == "AC":
+        st.subheader("❄️ Simulador de Cargas AC")
+        qtd_carregadores = st.number_input("Quantidade de Ar Condicionado a Adicionar (X):", min_value=0, value=2, step=1, key="g_qtd_ac")
+        
+        btu_sel = st.selectbox(
+            "Potência do Ar Condicionado:",
+            ["9.000 BTU/h", "12.000 BTU/h", "18.000 BTU/h", "24.000 BTU/h"],
+            key="g_btu_sel"
+        )
+        
+        if "9.000" in btu_sel:
+            potencia_carregador_kw = 1.0
+        elif "12.000" in btu_sel:
+            potencia_carregador_kw = 1.2
+        elif "18.000" in btu_sel:
+            potencia_carregador_kw = 1.6
+        else:
+            potencia_carregador_kw = 2.0
+            
+        st.info(f"Potência unitária considerada para cálculo: **{potencia_carregador_kw:.1f} kW** ({btu_sel})")
+    else:
+        st.subheader("🚗 Simulador de Cargas VE")
+        qtd_carregadores = st.number_input("Quantidade de Carregadores a Adicionar (X):", min_value=0, value=2, step=1, key="g_qtd_ve")
+        
+        ve_sel = st.selectbox(
+            "Potência por Carregador:",
+            ["3.700W (3.7 kW)", "7.400W (7.4 kW)", "11.000W (11.0 kW)"],
+            key="g_ve_sel"
+        )
+        
+        if "3.700" in ve_sel:
+            potencia_carregador_kw = 3.7
+        elif "7.400" in ve_sel:
+            potencia_carregador_kw = 7.4
+        else:
+            potencia_carregador_kw = 11.0
+            
+        st.info(f"Potência unitária considerada para cálculo: **{potencia_carregador_kw:.1f} kW**")
     
     potencia_total_ve_watts = qtd_carregadores * potencia_carregador_kw * 1000
     corrente_por_fase_ve = potencia_total_ve_watts / (220.0 * np.sqrt(3))
@@ -214,46 +253,6 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
     st.success(texto_analise_geral)
     st.code(texto_analise_geral, language="text")
 
-    st.markdown("---")
-    if sigla_tipo == "AC":
-        st.subheader("❄️ Simulador de Cargas AC")
-        qtd_carregadores = st.number_input("Quantidade de Ar Condicionado a Adicionar (X):", min_value=0, value=2, step=1, key="g_qtd_ac")
-        
-        btu_sel = st.selectbox(
-            "Potência do Ar Condicionado:",
-            ["9.000 BTU/h", "12.000 BTU/h", "18.000 BTU/h", "24.000 BTU/h"],
-            key="g_btu_sel"
-        )
-        
-        if "9.000" in btu_sel:
-            potencia_carregador_kw = 1.0
-        elif "12.000" in btu_sel:
-            potencia_carregador_kw = 1.2
-        elif "18.000" in btu_sel:
-            potencia_carregador_kw = 1.6
-        else:
-            potencia_carregador_kw = 2.0
-            
-        st.info(f"Potência unitária considerada para cálculo: **{potencia_carregador_kw:.1f} kW** ({btu_sel})")
-    else:
-        st.subheader("🚗 Simulador de Cargas VE")
-        qtd_carregadores = st.number_input("Quantidade de Carregadores a Adicionar (X):", min_value=0, value=2, step=1, key="g_qtd_ve")
-        
-        ve_sel = st.selectbox(
-            "Potência por Carregador:",
-            ["3.700W (3.7 kW)", "7.400W (7.4 kW)", "11.000W (11.0 kW)"],
-            key="g_ve_sel"
-        )
-        
-        if "3.700" in ve_sel:
-            potencia_carregador_kw = 3.7
-        elif "7.400" in ve_sel:
-            potencia_carregador_kw = 7.4
-        else:
-            potencia_carregador_kw = 11.0
-            
-        st.info(f"Potência unitária considerada para cálculo: **{potencia_carregador_kw:.1f} kW**")
-    
     status_r = "⚠️ ULTRAPASSA" if i_pico_r > i_prot_total or i_pico_r > i_cond_total else "✅ OK"
     status_s = "⚠️ ULTRAPASSA" if i_pico_s > i_prot_total or i_pico_s > i_cond_total else "✅ OK"
     status_t = "⚠️ ULTRAPASSA" if i_pico_t > i_prot_total or i_pico_t > i_cond_total else "✅ OK"
