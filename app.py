@@ -711,7 +711,7 @@ with tab3:
         texto_laudo = f"""De acordo com as medições realizadas, verificou-se que o condomínio dispõe de uma potência de {fmt(p_disp_entrada_kva)} kVA na entrada de energia. Para garantir maior segurança e confiabilidade ao sistema elétrico, recomenda-se a utilização de até 80% desse valor ({fmt(p_disp_entrada_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema.
 
 De forma similar, o quadro administrativo apresenta uma potência disponível de aproximadamente {fmt(p_disp_adm_kva)} kVA. Sugere-se, pelos mesmos critérios de segurança operacional, limitar o uso a até 80% dessa capacidade ({fmt(p_disp_adm_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema.
-Em síntese, conclui-se que, nas condições atuais, o condomínio dispõe de capacidade para a instalação de até (qtd_op1) carregadores veiculares de 7.4KW ou, alternativamente, (qtd_op2) carregadores veiculares de 3.7KW, no cenário sem a adoção do sistema de gerenciamento de carga."""
+Em síntese, conclui-se que, nas condições atuais, o condomínio dispõe de capacidade para a instalação de até {int(qtd_op1)} carregadores veiculares de 7.4KW ou, alternativamente, {int(qtd_op2)} carregadores veiculares de 3.7KW, no cenário sem a adoção do sistema de gerenciamento de carga."""
 
         st.success(texto_laudo)
         st.code(texto_laudo, language="text")
