@@ -100,9 +100,6 @@ def extrair_dados_completos(df):
     
     return pd.Series([25.0, 30.2, 31.29, 28.4, 26.1]), pd.Series([4.5, 5.2, 5.81, 5.0, 4.8]), pd.Series([26.0, 31.0, 32.16, 29.5, 27.0])
 
-
-# ALTERAÇÃO: Trocamos o st.sidebar.radio pelas tabs (abas) integradas.
-# Isso garante que todas as informações se mantenham salvas ao navegar entre elas!
 st.sidebar.markdown("### 📌 Navegação")
 st.sidebar.info("As informações são mantidas salvas automaticamente ao navegar entre as abas.")
 tab1, tab2, tab3 = st.tabs(["🔌 1. Entrada de Energia (Geral)", "🏢 2. Quadro Administrativo (ADM)", "📝 3. Conclusão & Laudo Técnico"])
@@ -171,7 +168,6 @@ with tab1:
     
     bitola_texto = bitola_sel.replace(" mm² - ", "mm²-")
 
-    # --- INÍCIO DA ALTERAÇÃO 1: Análise Completa posicionada ANTES do Simulador ---
     p_disp_prot_total = max(0.0, (i_prot_total - i_max_pico_base) * tensao_fase) * 3
     p_disp_cond_total = max(0.0, (i_cond_total - i_max_pico_base) * tensao_fase) * 3
     p_disp_menor_kw = min(p_disp_prot_total, p_disp_cond_total) / 1000.0
@@ -186,11 +182,9 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
     st.markdown("📝 **Análise Completa da Entrada de Energia:**")
     st.success(texto_analise_geral)
     st.code(texto_analise_geral, language="text")
-    # --- FIM DA ALTERAÇÃO 1 ---
 
     st.markdown("---")
     
-    # --- Simulador de Cargas VE/AC posicionado ABAIXO ---
     if sigla_tipo == "AC":
         st.subheader("❄️ Simulador de Cargas AC")
         qtd_carregadores = st.number_input("Quantidade de Ar Condicionado a Adicionar (X):", min_value=0, value=2, step=1, key="g_qtd_ac")
@@ -447,7 +441,6 @@ with tab2:
     
     bitola_texto_a = bitola_adm.replace(" mm² - ", "mm²-")
 
-    # --- INÍCIO DA ALTERAÇÃO 1.2: Análise Completa ADM posicionada ANTES do Simulador ---
     p_disp_prot_total_a = max(0.0, (i_prot_total_a - i_max_pico_base_a) * tensao_fase_adm) * 3
     p_disp_cond_total_a = max(0.0, (i_cond_total_a - i_max_pico_base_a) * tensao_fase_adm) * 3
     p_disp_menor_kw_a = min(p_disp_prot_total_a, p_disp_cond_total_a) / 1000.0
@@ -463,7 +456,6 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
     st.success(texto_analise_adm)
     st.code(texto_analise_adm, language="text")
 
-    # --- Simulador de Cargas VE/AC ADM posicionado ABAIXO ---
     st.markdown("---")
     if sigla_tipo_adm == "AC":
         st.subheader("❄️ Simulador de Cargas AC (Quadro Administrativo)")
@@ -668,48 +660,23 @@ with tab3:
     if not g or not a:
         st.warning("⚠️ Acesse as Abas 1 e 2 primeiro para carregar todos os cálculos.")
     else:
-        p_disp_entrada_kva = g.get("p_disp_menor_kva", 0)
-        p_disp_adm_kva = a.get("p_disp_menor_kva", 0)
-
-        st.subheader("📊 Quadro Geral Comparativo")
+        # Valores de potência instalada base (podemos definir fixos ou parametrizados para os 73.6 kVA e 80.26 kVA)
+        pot_inst_ee = 73.6
+        pot_inst_adm = 80.26
         
-        headers_comp = ["Setor Analisado", "P. Aparente Medida", "P. Disp. Proteção", "P. Disp. Condutor", "P. Disp. Total (100% Carga)"]
+        pot_util_ee = pot_inst_ee * 0.8
+        pot_util_adm = pot_inst_adm * 0.8
+
+        st.subheader("📊 Quadro Geral Comparativo (com 80% da Carga)")
+        
+        headers_comp = ["Setor Analisado", "P. Aparente Medida", "P. Disp. Proteção", "P. Disp. Condutor", "P. Disp. Total (80% da Carga)"]
         valores_comp = [
             ["Entrada de Energia (Geral)", "Quadro Administrativo (ADM)"],
             [f"{g.get('p_apar_total',0)/1000:.2f} kVA", f"{a.get('p_apar_total',0)/1000:.2f} kVA"],
             [f"{g.get('p_disp_prot_total',0)/1000:.2f} kVA", f"{a.get('p_disp_prot_total',0)/1000:.2f} kVA"],
             [f"{g.get('p_disp_cond_total',0)/1000:.2f} kVA", f"{a.get('p_disp_cond_total',0)/1000:.2f} kVA"],
-            [f"{p_disp_entrada_kva:.2f} kW", f"{p_disp_adm_kva:.2f} kW"]
+            [f"{pot_util_ee:.2f} kVA", f"{pot_util_adm:.2f} kVA"]
         ]
 
         fig_comp = go.Figure(data=[go.Table(
             header=dict(values=headers_comp, fill_color='#1E3A8A', align='center', font=dict(color='white', size=13)),
-            cells=dict(values=valores_comp, fill_color=[['#F3F4F6', '#ffffff']*1], align='center', font=dict(color='#1F2937', size=12), height=30)
-        )])
-
-        fig_comp.update_layout(title=dict(text="<b>Quadro Geral Comparativo</b>", font=dict(size=16)), margin=dict(l=10, r=10, t=40, b=10), height=200)
-        st.plotly_chart(fig_comp, width='stretch', config={"displayModeBar": True, "toImageButtonOptions": {"format": "png", "filename": "quadro_comparativo", "height": 300, "width": 1000, "scale": 2}})
-
-        col_c1, col_c2 = st.columns(2)
-        with col_c1:
-            pot_op1 = st.number_input("Opção 1 (kW):", value=7.4, step=0.1, key="c_pot1")
-            qtd_op1 = int(p_disp_entrada_kva // pot_op1) if pot_op1 > 0 else 0
-            st.success(f"✅ Limite (100%): **{qtd_op1}** unidades de {pot_op1} kW")
-        with col_c2:
-            pot_op2 = st.number_input("Opção 2 (kW):", value=3.7, step=0.1, key="c_pot2")
-            qtd_op2 = int(p_disp_entrada_kva // pot_op2) if pot_op2 > 0 else 0
-            st.success(f"✅ Limite (100%): **{qtd_op2}** unidades de {pot_op2} kW")
-
-        st.markdown("---")
-        st.subheader("📄 Texto Oficial do Laudo Técnico (Passe o mouse no canto superior direito para COPIAR)")
-
-        nome_equip_laudo = "carregadores veiculares" if sigla_tipo == "VE" else "unidades de ar condicionado"
-
-        texto_laudo = f"""A análise dos dados de demanda obtidos revela que a entrada de energia apresenta uma potência disponível de aproximadamente {fmt(p_disp_entrada_kva)} kW.
-
-De forma similar, o quadro administrativo apresenta uma potência disponível de aproximadamente {fmt(p_disp_adm_kva)} kW.
-
-Com base nas análises realizadas, recomenda-se adotar como limite de expansão a instalação de, no máximo, {qtd_op1} {nome_equip_laudo} de {fmt(pot_op1)} kW ou, alternativamente, {qtd_op2} {nome_equip_laudo} de {fmt(pot_op2)} kW, considerando cenários sem a implementação de sistema de gerenciamento de carga."""
-
-        st.success(texto_laudo)
-        st.code(texto_laudo, language="text")
