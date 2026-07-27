@@ -704,13 +704,13 @@ with tab3:
         
         st.subheader("📄 Texto Oficial do Laudo Técnico (Passe o mouse no canto superior direito para COPIAR)")
 
-        nome_equip_laudo = "carregadores veiculares" if sigla_tipo == "VE" else "unidades de ar condicionado"
+        # Cálculos dos 80% de limite de segurança
+        p_disp_entrada_80 = p_disp_entrada_kva * 0.8
+        p_disp_adm_80 = p_disp_adm_kva * 0.8
 
-        texto_laudo = f"""A análise dos dados de demanda obtidos revela que a entrada de energia apresenta uma potência disponível de aproximadamente {fmt(p_disp_entrada_kva)} kW.
+        texto_laudo = f"""De acordo com as medições realizadas, verificou-se que o condomínio dispõe de uma potência de {fmt(p_disp_entrada_kva)} kVA na entrada de energia. Para garantir maior segurança e confiabilidade ao sistema elétrico, recomenda-se a utilização de até 80% desse valor ({fmt(p_disp_entrada_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema.
 
-De forma similar, o quadro administrativo apresenta uma potência disponível de aproximadamente {fmt(p_disp_adm_kva)} kW.
-
-Com base nas análises realizadas, recomenda-se adotar como limite de expansão a instalação de, no máximo, {qtd_op1} {nome_equip_laudo} de {fmt(pot_op1)} kW ou, alternativamente, {qtd_op2} {nome_equip_laudo} de {fmt(pot_op2)} kW, considerando cenários sem a implementação de sistema de gerenciamento de carga."""
+De forma similar, o quadro administrativo apresenta uma potência disponível de aproximadamente {fmt(p_disp_adm_kva)} kVA. Sugere-se, pelos mesmos critérios de segurança operacional, limitar o uso a até 80% dessa capacidade ({fmt(p_disp_adm_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema."""
 
         st.success(texto_laudo)
         st.code(texto_laudo, language="text")
