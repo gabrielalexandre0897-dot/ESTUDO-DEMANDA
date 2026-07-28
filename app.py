@@ -103,7 +103,7 @@ if "reset_key" not in st.session_state: st.session_state["reset_key"] = 0
 if "arquivos_data" not in st.session_state: st.session_state["arquivos_data"] = {}
 if "pending_load_report" not in st.session_state: st.session_state["pending_load_report"] = None
 
-# Se houver um relatório pendente para carregar, fazemos a limpeza e carga segura aqui no início
+# Se houver um relatório pendente para carregar, executamos a limpeza completa e o carregamento seguro
 if st.session_state["pending_load_report"] is not None:
     nome_a_carregar = st.session_state["pending_load_report"]
     st.session_state["pending_load_report"] = None
@@ -111,12 +111,12 @@ if st.session_state["pending_load_report"] is not None:
     if nome_a_carregar in st.session_state["saved_reports"]:
         report_data = st.session_state["saved_reports"][nome_a_carregar]
         
-        # Remove todos os widgets antigos para zerar o estado do Streamlit
+        # Limpa todos os widgets da sessão para evitar conflitos
         for k in list(st.session_state.keys()):
             if k not in ["saved_reports", "reset_key", "current_report_name", "pending_load_report"]:
                 del st.session_state[k]
         
-        # Carrega os dados salvos
+        # Restaura os dados salvos
         for k, v in report_data.items():
             st.session_state[k] = copy.deepcopy(v)
             
@@ -151,8 +151,8 @@ else:
         col_name, col_del = st.sidebar.columns([4, 1])
         
         with col_name:
-            if st.sidebar.button(f"📄 {rep_name}", use_container_width=True, key=f"load_{rep_name}"):
-                # Define a bandeira e força o recarregamento na próxima execução
+            # Botão sem key customizada na barra lateral para evitar completamente o erro de atribuição de valor
+            if st.sidebar.button(f"📄 {rep_name}", use_container_width=True):
                 st.session_state["pending_load_report"] = rep_name
                 st.rerun()
                 
