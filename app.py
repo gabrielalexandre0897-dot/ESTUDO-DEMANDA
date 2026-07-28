@@ -68,7 +68,6 @@ TABELA_CABOS = {
 
 INDEX_PADRAO = list(TABELA_CABOS.keys()).index("35 mm² - 1kV")
 
-# SISTEMA DE BANCO DE DADOS LOCAL (ARQUIVO PICKLE)
 ARQUIVO_BANDO_DADOS = "banco_relatorios.pkl"
 
 def carregar_dados():
@@ -97,30 +96,32 @@ def update_cap_adm():
 
 # --- INICIALIZAÇÃO DE VARIÁVEIS NA MEMÓRIA ---
 if "saved_reports" not in st.session_state: st.session_state["saved_reports"] = carregar_dados()
-if "current_report_name" not in st.session_state: st.session_state["current_report_name"] = "" # Guarda o nome do relatório ativo
+if "current_report_name" not in st.session_state: st.session_state["current_report_name"] = ""
 if "dados_geral" not in st.session_state: st.session_state["dados_geral"] = {}
 if "dados_adm" not in st.session_state: st.session_state["dados_adm"] = {}
 if "reset_key" not in st.session_state: st.session_state["reset_key"] = 0
 if "arquivos_data" not in st.session_state: st.session_state["arquivos_data"] = {}
 
-# Função para resetar e iniciar um novo relatório
 def reset_app():
     st.session_state["reset_key"] += 1
-    # Mantém apenas as chaves principais e apaga o resto
     keys_to_delete = [k for k in st.session_state.keys() if k not in ["saved_reports", "reset_key", "current_report_name"]]
     for k in keys_to_delete:
         del st.session_state[k]
     st.session_state["dados_geral"] = {}
     st.session_state["dados_adm"] = {}
     st.session_state["arquivos_data"] = {}
-    st.session_state["current_report_name"] = "" # Limpa o nome do relatório
+    st.session_state["current_report_name"] = ""
 
-# Função para carregar um relatório salvo
 def load_report(nome):
     report_data = st.session_state["saved_reports"][nome]
+    # Limpa widgets anteriores para evitar conflito de chaves do Streamlit
+    for k in list(st.session_state.keys()):
+        if k not in ["saved_reports", "reset_key", "current_report_name"]:
+            del st.session_state[k]
+    
     for k, v in report_data.items():
         st.session_state[k] = copy.deepcopy(v)
-    st.session_state["current_report_name"] = nome # Define o relatório atual como o que foi carregado
+    st.session_state["current_report_name"] = nome
 
 # --- BARRA LATERAL (MENU DE RELATÓRIOS) ---
 st.sidebar.markdown("### 💾 Gerenciador de Relatórios")
@@ -148,10 +149,9 @@ else:
                 del st.session_state["saved_reports"][rep_name]
                 salvar_dados_arquivo(st.session_state["saved_reports"])
                 if st.session_state["current_report_name"] == rep_name:
-                    st.session_state["current_report_name"] = "" # Limpa se deletou o atual
+                    st.session_state["current_report_name"] = ""
                 st.toast(f"Relatório apagado!", icon="🗑️")
                 st.rerun()
-
 
 # Extração de Dados
 def extrair_dados_completos(df):
@@ -433,7 +433,7 @@ with tab2:
     texto_analise_adm = f"""As medições realizadas com o analisador de energia indicaram as correntes de amostragem máximas de {fmt(ir_am_max_a)}A na fase R, {fmt(is_am_max_a)}A na fase S e {fmt(it_am_max_a)}A na fase T.
 O quadro administrativo existente conta com {num_cabos_adm} dispositivos de proteção, dessa forma, as correntes de pico consideradas totais do sistema são: {fmt(i_pico_r_base_a)}A na fase R, {fmt(i_pico_s_base_a)}A na fase S e {fmt(i_pico_t_base_a)}A na fase T.
 A alimentação do sistema é realizada por condutor de seção estimada {bitola_texto_a}, que possui uma capacidade teórica de condução de corrente na ordem de {fmt(i_capacidade_cabo_adm, 0)}A (por fase) em condições usuais de instalação. Dessa forma, a maior corrente de pico medida ({fmt(i_max_pico_base_a)}A) representa aproximadamente {fmt(pct_condutor_base_a)}% da capacidade do condutor.
-Considerando a proteção do quadro administrativo ({num_cabos_adm} x {fmt(i_protecao, 0)} = {fmt(i_prot_total_a, 0)}A), verifica-se que a maior corrente de pico medida ({fmt(i_max_pico_base_a)}A) corresponde a aproximadamente {fmt(pct_dispositivo_base_a)}% da capacidade nominal do dispositivo, restando uma capacidade disponível na ordem de {fmt(disp_restante_base_a)}A na fase analisada.
+Considerando a proteção do quadro administrativo ({num_cabos_adm} x {fmt(i_protecao_adm, 0)} = {fmt(i_prot_total_a, 0)}A), verifica-se que a maior corrente de pico medida ({fmt(i_max_pico_base_a)}A) corresponde a aproximadamente {fmt(pct_dispositivo_base_a)}% da capacidade nominal do dispositivo, restando uma capacidade disponível na ordem de {fmt(disp_restante_base_a)}A na fase analisada.
 Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_kw_a)} kW no quadro administrativo."""
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -547,7 +547,6 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
     st.markdown("📋 **Resumo da Simulação (Pronto para Cópia):**")
     st.code(texto_resumo_cliente_a, language="text")
 
-
 with tab3:
     st.header("📝 3. Quadro Comparativo & Laudo Técnico")
 
@@ -609,14 +608,12 @@ De forma similar, o quadro administrativo apresenta uma potência disponível de
         
         col_save1, col_save2 = st.columns([3, 1])
         with col_save1:
-            # Puxa o nome do relatório que está atualmente carregado (se houver)
             nome_atual = st.session_state.get("current_report_name", "")
             nome_novo_relatorio = st.text_input("Nome do relatório (Ex: Condomínio XYZ - Bloco A):", value=nome_atual)
         
         with col_save2:
             st.markdown("<br>", unsafe_allow_html=True)
             
-            # Se o usuário não alterou o nome, o botão mostra "Atualizar". Se apagou ou digitou outro, mostra "Salvar"
             is_updating = (nome_atual != "" and nome_atual == nome_novo_relatorio)
             texto_botao = "Atualizar Relatório" if is_updating else "Salvar Relatório"
             cor_botao = "primary" if is_updating else "secondary"
@@ -627,18 +624,14 @@ De forma similar, o quadro administrativo apresenta uma potência disponível de
                 else:
                     estado_salvo = {}
                     for chave, valor in st.session_state.items():
-                        # Ignora variáveis de controle e arquivos de upload
                         if chave not in ["saved_reports", "reset_key", "current_report_name"] and not chave.startswith("FormSubmitter") and not chave.startswith("file_geral") and not chave.startswith("file_adm"):
                             estado_salvo[chave] = copy.deepcopy(valor)
                     
-                    # Salva no dicionário usando o nome fornecido
                     st.session_state["saved_reports"][nome_novo_relatorio] = estado_salvo
-                    st.session_state["current_report_name"] = nome_novo_relatorio # Atualiza o relatório ativo
+                    st.session_state["current_report_name"] = nome_novo_relatorio
                     
-                    # Salva no arquivo permanente
                     salvar_dados_arquivo(st.session_state["saved_reports"])
                     
-                    # Mostra a notificação certa
                     if is_updating:
                         st.toast(f"Relatório '{nome_novo_relatorio}' atualizado com sucesso!", icon="🔄")
                     else:
