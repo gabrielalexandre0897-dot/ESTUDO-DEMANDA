@@ -112,9 +112,10 @@ def reset_app():
     st.session_state["arquivos_data"] = {}
     st.session_state["current_report_name"] = ""
 
-def load_report(nome):
+# Função de callback segura para carregar o relatório sem conflitos de widgets
+def load_report_callback(nome):
     report_data = st.session_state["saved_reports"][nome]
-    # Limpa widgets anteriores para evitar conflito de chaves do Streamlit
+    # Limpa widgets anteriores do session_state
     for k in list(st.session_state.keys()):
         if k not in ["saved_reports", "reset_key", "current_report_name"]:
             del st.session_state[k]
@@ -140,12 +141,17 @@ else:
         col_name, col_del = st.sidebar.columns([4, 1])
         
         with col_name:
-            if st.button(f"📄 {rep_name}", use_container_width=True, key=f"load_{rep_name}"):
-                load_report(rep_name)
-                st.rerun()
+            # Uso seguro de on_click para evitar o conflito de valores do Streamlit
+            st.sidebar.button(
+                f"📄 {rep_name}", 
+                use_container_width=True, 
+                key=f"load_{rep_name}",
+                on_click=load_report_callback,
+                args=(rep_name,)
+            )
                 
         with col_del:
-            if st.button("🗑️", key=f"del_{rep_name}", help=f"Excluir '{rep_name}'"):
+            if st.sidebar.button("🗑️", key=f"del_{rep_name}", help=f"Excluir '{rep_name}'"):
                 del st.session_state["saved_reports"][rep_name]
                 salvar_dados_arquivo(st.session_state["saved_reports"])
                 if st.session_state["current_report_name"] == rep_name:
@@ -546,6 +552,7 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
 
     st.markdown("📋 **Resumo da Simulação (Pronto para Cópia):**")
     st.code(texto_resumo_cliente_a, language="text")
+
 
 with tab3:
     st.header("📝 3. Quadro Comparativo & Laudo Técnico")
