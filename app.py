@@ -772,6 +772,10 @@ with tab4:
         p_disp_adm_kva = a.get("p_disp_menor_kva", 0)
         p_disp_med_kva = m.get("p_disp_menor_kva", 0)
 
+        sigla_geral = g.get("sigla_tipo", "VE")
+        sigla_adm = a.get("sigla_tipo", "VE")
+        sigla_med = m.get("sigla_tipo", "VE")
+
         st.subheader("📊 Quadro Geral Comparativo")
         
         headers_comp = ["Setor Analisado", "P. Aparente Medida", "P. Disp. Proteção", "P. Disp. Condutor", "P. Disp. Total (100% Carga)"]
@@ -797,18 +801,40 @@ with tab4:
         p_disp_adm_80 = p_disp_adm_kva * 0.8
         p_disp_med_80 = p_disp_med_kva * 0.8
 
-        # Cálculos de quantidade a 100% da potência sobrando para ADM e Medidores
-        qtd_adm_74 = int(p_disp_adm_kva // 7.4) if p_disp_adm_kva > 0 else 0
-        qtd_adm_37 = int(p_disp_adm_kva // 3.7) if p_disp_adm_kva > 0 else 0
+        # --- PARÁGRAFO 1: ENTRADA DE ENERGIA ---
+        if sigla_geral == "AC":
+            qtd_geral_9k = int(p_disp_entrada_kva // 1.0) if p_disp_entrada_kva > 0 else 0
+            qtd_geral_12k = int(p_disp_entrada_kva // 1.2) if p_disp_entrada_kva > 0 else 0
+            qtd_geral_18k = int(p_disp_entrada_kva // 1.6) if p_disp_entrada_kva > 0 else 0
+            paragrafo_geral = f"De acordo com as medições realizadas, verificou-se que o condomínio dispõe de uma potência de {fmt(p_disp_entrada_kva)} kVA na entrada de energia. Para garantir maior segurança e confiabilidade ao sistema elétrico, recomenda-se a utilização de até 80% desse valor ({fmt(p_disp_entrada_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema. Portanto, a entrada de energia suporta a adição de {qtd_geral_9k} máquinas de ar-condicionado de 9.000 BTU/h, {qtd_geral_12k} máquinas de 12.000 BTU/h e {qtd_geral_18k} máquinas de 18.000 BTU/h."
+        else:
+            qtd_geral_74 = int(p_disp_entrada_kva // 7.4) if p_disp_entrada_kva > 0 else 0
+            qtd_geral_37 = int(p_disp_entrada_kva // 3.7) if p_disp_entrada_kva > 0 else 0
+            paragrafo_geral = f"De acordo com as medições realizadas, verificou-se que o condomínio dispõe de uma potência de {fmt(p_disp_entrada_kva)} kVA na entrada de energia. Para garantir maior segurança e confiabilidade ao sistema elétrico, recomenda-se a utilização de até 80% desse valor ({fmt(p_disp_entrada_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema. Se o sistema de gerenciamento de carga for desconsiderado, o condomínio tem a possibilidade de instalar {qtd_geral_74} carregadores veiculares de 7400W, ou alternativamente, {qtd_geral_37} carregadores de 3700W na entrada de energia."
 
-        qtd_med_74 = int(p_disp_med_kva // 7.4) if p_disp_med_kva > 0 else 0
-        qtd_med_37 = int(p_disp_med_kva // 3.7) if p_disp_med_kva > 0 else 0
+        # --- PARÁGRAFO 2: QUADRO ADMINISTRATIVO ---
+        if sigla_adm == "AC":
+            qtd_adm_9k = int(p_disp_adm_kva // 1.0) if p_disp_adm_kva > 0 else 0
+            qtd_adm_12k = int(p_disp_adm_kva // 1.2) if p_disp_adm_kva > 0 else 0
+            qtd_adm_18k = int(p_disp_adm_kva // 1.6) if p_disp_adm_kva > 0 else 0
+            paragrafo_adm = f"De forma similar, o quadro administrativo apresenta uma potência disponível de aproximadamente {fmt(p_disp_adm_kva)} kVA. Sugere-se, pelos mesmos critérios de segurança operacional, limitar o uso a até 80% dessa capacidade ({fmt(p_disp_adm_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema. Portanto, a entrada de energia suporta a adição de {qtd_adm_9k} máquinas de ar-condicionado de 9.000 BTU/h, {qtd_adm_12k} máquinas de 12.000 BTU/h e {qtd_adm_18k} máquinas de 18.000 BTU/h."
+        else:
+            qtd_adm_74 = int(p_disp_adm_kva // 7.4) if p_disp_adm_kva > 0 else 0
+            qtd_adm_37 = int(p_disp_adm_kva // 3.7) if p_disp_adm_kva > 0 else 0
+            paragrafo_adm = f"De forma similar, o quadro administrativo apresenta uma potência disponível de aproximadamente {fmt(p_disp_adm_kva)} kVA. Sugere-se, pelos mesmos critérios de segurança operacional, limitar o uso a até 80% dessa capacidade ({fmt(p_disp_adm_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema. Se o sistema de gerenciamento de carga for desconsiderado, o condomínio tem a possibilidade de instalar {qtd_adm_74} carregadores veiculares de 7400W, ou alternativamente, {qtd_adm_37} carregadores de 3700W no quadro administrativo."
 
-        texto_laudo = f"""De acordo com as medições realizadas, verificou-se que o condomínio dispõe de uma potência de {fmt(p_disp_entrada_kva)} kVA na entrada de energia. Para garantir maior segurança e confiabilidade ao sistema elétrico, recomenda-se a utilização de até 80% desse valor ({fmt(p_disp_entrada_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema.
+        # --- PARÁGRAFO 3: CAIXA DE MEDIDORES ---
+        if sigla_med == "AC":
+            qtd_med_9k = int(p_disp_med_kva // 1.0) if p_disp_med_kva > 0 else 0
+            qtd_med_12k = int(p_disp_med_kva // 1.2) if p_disp_med_kva > 0 else 0
+            qtd_med_18k = int(p_disp_med_kva // 1.6) if p_disp_med_kva > 0 else 0
+            paragrafo_med = f"Adicionalmente, a caixa de medidores apresenta uma potência disponível de aproximadamente {fmt(p_disp_med_kva)} kVA. Sugere-se, pelos mesmos critérios de segurança operacional, limitar o uso a até 80% dessa capacidade ({fmt(p_disp_med_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema. Portanto, a entrada de energia suporta a adição de {qtd_med_9k} máquinas de ar-condicionado de 9.000 BTU/h, {qtd_med_12k} máquinas de 12.000 BTU/h e {qtd_med_18k} máquinas de 18.000 BTU/h."
+        else:
+            qtd_med_74 = int(p_disp_med_kva // 7.4) if p_disp_med_kva > 0 else 0
+            qtd_med_37 = int(p_disp_med_kva // 3.7) if p_disp_med_kva > 0 else 0
+            paragrafo_med = f"Adicionalmente, a caixa de medidores apresenta uma potência disponível de aproximadamente {fmt(p_disp_med_kva)} kVA. Sugere-se, pelos mesmos critérios de segurança operacional, limitar o uso a até 80% dessa capacidade ({fmt(p_disp_med_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema. Se o sistema de gerenciamento de carga for desconsiderado, o condomínio tem a possibilidade de instalar {qtd_med_74} carregadores veiculares de 7400W, ou alternativamente, {qtd_med_37} carregadores de 3700W na caixa de medidores."
 
-De forma similar, o quadro administrativo apresenta uma potência disponível de aproximadamente {fmt(p_disp_adm_kva)} kVA. Sugere-se, pelos mesmos critérios de segurança operacional, limitar o uso a até 80% dessa capacidade ({fmt(p_disp_adm_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema. Se o sistema de gerenciamento de carga for desconsiderado, o condomínio tem a possibilidade de instalar {qtd_adm_74} carregadores veiculares de 7400W, ou alternativamente, {qtd_adm_37} carregadores de 3700W no quadro administrativo.
-
-Adicionalmente, a caixa de medidores apresenta uma potência disponível de aproximadamente {fmt(p_disp_med_kva)} kVA. Sugere-se, pelos mesmos critérios de segurança operacional, limitar o uso a até 80% dessa capacidade ({fmt(p_disp_med_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema. Se o sistema de gerenciamento de carga for desconsiderado, o condomínio tem a possibilidade de instalar {qtd_med_74} carregadores veiculares de 7400W, ou alternativamente, {qtd_med_37} carregadores de 3700W na caixa de medidores."""
+        texto_laudo = f"{paragrafo_geral}\n\n{paragrafo_adm}\n\n{paragrafo_med}"
 
         st.success(texto_laudo)
         st.code(texto_laudo, language="text")
