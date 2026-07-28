@@ -11,18 +11,18 @@ import os
 st.set_page_config(page_title="Estudo de Demanda - Veículos Elétricos & Ar Condicionado", page_icon="⚡", layout="wide")
 
 # =====================================================================
-# CONFIGURAÇÃO "ESMAGADA E PANORÂMICA" PARA O WORD (16,91cm x 3,66cm)
+# CONFIGURAÇÃO DE EXPORTAÇÃO (16,91cm x 3,66cm aprox.)
 # =====================================================================
-# A proporção 1400x300 pixels = 4.66 (exatamente 16.91 / 3.66).
+# Altura ligeiramente compensada para abrigar o título interno sem amassar os dados
 CONFIG_IMG_TABELA = {
     "toImageButtonOptions": {
-        "format": "png", "width": 1400, "height": 300, "scale": 3 # Scale 3 para Ultra HD no Word
+        "format": "png", "width": 1400, "height": 340, "scale": 3
     },
     "displayModeBar": True
 }
 CONFIG_IMG_GRAFICO = {
     "toImageButtonOptions": {
-        "format": "png", "width": 1400, "height": 350, "scale": 3
+        "format": "png", "width": 1400, "height": 380, "scale": 3
     },
     "displayModeBar": True
 }
@@ -365,46 +365,29 @@ with tab1:
     stat_t = "⚠️ ACIMA" if i_pico_t > i_prot_tot or i_pico_t > i_cond_tot else "✅ OK"
     bitola_curta = bitola.split(" - ")[0]
 
-    # TABELA OTIMIZADA PARA ALTURA 3.66cm (Fontes Gigantes, Textos Curtos, Margem Zero)
     headers_tabela = ["<b>PARÂMETRO / MÉTRICA</b>", "<b>FASE R</b>", "<b>FASE S</b>", "<b>FASE T</b>", "<b>REFERÊNCIA</b>"]
     valores_tabela = [
-        [
-            "Corrente Medida (A)", 
-            "Pot. Apar. Medida (kVA)", 
-            f"Pot. Apar. (+{sigla}) (kVA)", 
-            f"Corr. Pico (+{sigla}) (A)", 
-            f"Cap. Cabo ({num_cabos}x {bitola_curta})", 
-            "Corrente Proteção (A)", 
-            "Status Final"
-        ],
+        ["Corrente Medida (A)", "Pot. Apar. Medida (kVA)", f"Pot. Apar. (+{sigla}) (kVA)", f"Corr. Pico (+{sigla}) (A)", f"Cap. Cabo ({num_cabos}x {bitola_curta})", "Corrente Proteção (A)", "Status Final"],
         [f"{i_pico_r_b:.1f}", f"{p_apar_r_b/1000:.1f}", f"{p_apar_r/1000:.1f}", f"{i_pico_r:.1f}", f"{i_cond_tot:.1f}", f"{i_prot_tot:.1f}", stat_r],
         [f"{i_pico_s_b:.1f}", f"{p_apar_s_b/1000:.1f}", f"{p_apar_s/1000:.1f}", f"{i_pico_s:.1f}", f"{i_cond_tot:.1f}", f"{i_prot_tot:.1f}", stat_s],
         [f"{i_pico_t_b:.1f}", f"{p_apar_t_b/1000:.1f}", f"{p_apar_t/1000:.1f}", f"{i_pico_t:.1f}", f"{i_cond_tot:.1f}", f"{i_prot_tot:.1f}", stat_t],
-        [
-            "Analisador Base", 
-            f"Total: {p_apar_tot_b/1000:.1f} kVA", 
-            f"Total: {p_apar_tot/1000:.1f} kVA", 
-            "Cálculo/Fase", 
-            "L. Max Condutor", 
-            "L. Max Proteção", 
-            "Avaliação"
-        ]
+        ["Analisador Base", f"Total: {p_apar_tot_b/1000:.1f} kVA", f"Total: {p_apar_tot/1000:.1f} kVA", "Cálculo/Fase", "L. Max Condutor", "L. Max Proteção", "Avaliação"]
     ]
 
     st.markdown("---")
-    st.subheader("📋 Quadro de Potências e Correntes - Entrada de Energia")
     
     fig_tab = go.Figure(data=[go.Table(
-        columnwidth=[3.3, 1.3, 1.3, 1.3, 2.3], # "Aperta" as fases para dar espaço pro texto
-        header=dict(values=headers_tabela, fill_color='#1E3A8A', align='center', font=dict(color='white', size=19, family="Arial Black")),
-        cells=dict(values=valores_tabela, fill_color=[['#F3F4F6', '#ffffff']*4], align='center', font=dict(color='#000000', size=17, family="Arial"), height=37)
+        columnwidth=[3.3, 1.3, 1.3, 1.3, 2.3], 
+        header=dict(values=headers_tabela, fill_color='#1E3A8A', align='center', font=dict(color='white', size=21, family="Arial Black")),
+        cells=dict(values=valores_tabela, fill_color=[['#F3F4F6', '#ffffff']*4], align='center', font=dict(color='#000000', size=19, family="Arial"), height=37)
     )])
-    # MARGEM ZERO no Plotly para maximizar espaço no print 16x3cm
-    fig_tab.update_layout(margin=dict(l=0, r=0, t=0, b=0), height=310) 
+    fig_tab.update_layout(
+        title=dict(text="<b>Quadro de Potências e Correntes - Entrada de Energia</b>", font=dict(size=24, color='#000000')),
+        margin=dict(l=5, r=5, t=55, b=5), height=340
+    ) 
     st.plotly_chart(fig_tab, use_container_width=True, config=CONFIG_IMG_TABELA)
 
     st.markdown("---")
-    st.subheader(f"📈 Perfil de Correntes - Entrada de Energia (+ {sigla})")
     
     fig = go.Figure()
     fig.add_trace(go.Scatter(y=serie_r_b.iloc[:min_len]*num_cabos, mode='lines', name='R (Atual)', line=dict(color='#FCA5A5', width=2, dash='dot')))
@@ -414,15 +397,15 @@ with tab1:
     fig.add_trace(go.Scatter(y=serie_t_b.iloc[:min_len]*num_cabos, mode='lines', name='T (Atual)', line=dict(color='#6EE7B7', width=2, dash='dot')))
     fig.add_trace(go.Scatter(y=t_tot_serie, mode='lines', name=f'T (+{sigla})', line=dict(color='#059669', width=4)))
 
-    fig.add_hline(y=i_cond_tot, line_dash="dash", line_color="#D97706", line_width=3, annotation_text=f"<b>Cabo ({i_cond_tot}A)</b>", annotation_font=dict(size=16, color="#D97706"))
-    fig.add_hline(y=i_prot_tot, line_dash="dot", line_color="#7C3AED", line_width=3, annotation_text=f"<b>Prot ({i_prot_tot}A)</b>", annotation_font=dict(size=16, color="#7C3AED"))
+    fig.add_hline(y=i_cond_tot, line_dash="dash", line_color="#D97706", line_width=3, annotation_text=f"<b>Cabo ({i_cond_tot}A)</b>", annotation_font=dict(size=18, color="#D97706"))
+    fig.add_hline(y=i_prot_tot, line_dash="dot", line_color="#7C3AED", line_width=3, annotation_text=f"<b>Prot ({i_prot_tot}A)</b>", annotation_font=dict(size=18, color="#7C3AED"))
 
-    # Legenda Horizontal e zero margens no Gráfico
     fig.update_layout(
-        xaxis=dict(title=dict(text="<b>Amostras</b>", font=dict(size=17, color='#000000')), tickfont=dict(size=16, color='#000000')),
-        yaxis=dict(title=dict(text="<b>Corrente (A)</b>", font=dict(size=17, color='#000000')), tickfont=dict(size=16, color='#000000')),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font=dict(size=15, color='#000000'), bgcolor="rgba(255,255,255,0.9)", borderwidth=1),
-        margin=dict(l=5, r=5, t=10, b=5), template="plotly_white", height=380
+        title=dict(text=f"<b>Perfil de Correntes - Entrada de Energia (+ {sigla})</b>", font=dict(size=24, color='#000000')),
+        xaxis=dict(title=dict(text="<b>Amostras</b>", font=dict(size=19, color='#000000')), tickfont=dict(size=18, color='#000000')),
+        yaxis=dict(title=dict(text="<b>Corrente (A)</b>", font=dict(size=19, color='#000000')), tickfont=dict(size=18, color='#000000')),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font=dict(size=18, color='#000000'), bgcolor="rgba(255,255,255,0.9)", borderwidth=1),
+        margin=dict(l=5, r=5, t=55, b=5), template="plotly_white", height=400
     )
     st.plotly_chart(fig, use_container_width=True, config=CONFIG_IMG_GRAFICO)
 
@@ -518,18 +501,19 @@ with tab2:
     ]
 
     st.markdown("---")
-    st.subheader("📋 Quadro de Potências e Correntes - ADM")
     
     fig_tab_a = go.Figure(data=[go.Table(
         columnwidth=[3.3, 1.3, 1.3, 1.3, 2.3],
-        header=dict(values=headers_tabela, fill_color='#1E3A8A', align='center', font=dict(color='white', size=19, family="Arial Black")),
-        cells=dict(values=val_tab_a, fill_color=[['#F3F4F6', '#ffffff']*4], align='center', font=dict(color='#000000', size=17, family="Arial"), height=37)
+        header=dict(values=headers_tabela, fill_color='#1E3A8A', align='center', font=dict(color='white', size=21, family="Arial Black")),
+        cells=dict(values=val_tab_a, fill_color=[['#F3F4F6', '#ffffff']*4], align='center', font=dict(color='#000000', size=19, family="Arial"), height=37)
     )])
-    fig_tab_a.update_layout(margin=dict(l=0, r=0, t=0, b=0), height=310)
+    fig_tab_a.update_layout(
+        title=dict(text="<b>Quadro de Potências e Correntes - ADM</b>", font=dict(size=24, color='#000000')),
+        margin=dict(l=5, r=5, t=55, b=5), height=340
+    )
     st.plotly_chart(fig_tab_a, use_container_width=True, config=CONFIG_IMG_TABELA)
 
     st.markdown("---")
-    st.subheader(f"📈 Perfil de Correntes - ADM (+ {sigla_a})")
     
     fig_a = go.Figure()
     fig_a.add_trace(go.Scatter(y=sr_a.iloc[:min_l_a]*num_cabos_a, mode='lines', name='R (Atual)', line=dict(color='#FCA5A5', width=2, dash='dot')))
@@ -539,14 +523,15 @@ with tab2:
     fig_a.add_trace(go.Scatter(y=st_a.iloc[:min_l_a]*num_cabos_a, mode='lines', name='T (Atual)', line=dict(color='#6EE7B7', width=2, dash='dot')))
     fig_a.add_trace(go.Scatter(y=t_tot_s_a, mode='lines', name=f'T (+{sigla_a})', line=dict(color='#059669', width=4)))
 
-    fig_a.add_hline(y=i_cond_tot_a, line_dash="dash", line_color="#D97706", line_width=3, annotation_text=f"<b>Cabo ({i_cond_tot_a}A)</b>", annotation_font=dict(size=16, color="#D97706"))
-    fig_a.add_hline(y=i_prot_tot_a, line_dash="dot", line_color="#7C3AED", line_width=3, annotation_text=f"<b>Prot ({i_prot_tot_a}A)</b>", annotation_font=dict(size=16, color="#7C3AED"))
+    fig_a.add_hline(y=i_cond_tot_a, line_dash="dash", line_color="#D97706", line_width=3, annotation_text=f"<b>Cabo ({i_cond_tot_a}A)</b>", annotation_font=dict(size=18, color="#D97706"))
+    fig_a.add_hline(y=i_prot_tot_a, line_dash="dot", line_color="#7C3AED", line_width=3, annotation_text=f"<b>Prot ({i_prot_tot_a}A)</b>", annotation_font=dict(size=18, color="#7C3AED"))
 
     fig_a.update_layout(
-        xaxis=dict(title=dict(text="<b>Amostras</b>", font=dict(size=17, color='#000000')), tickfont=dict(size=16, color='#000000')),
-        yaxis=dict(title=dict(text="<b>Corrente (A)</b>", font=dict(size=17, color='#000000')), tickfont=dict(size=16, color='#000000')),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font=dict(size=15, color='#000000'), bgcolor="rgba(255,255,255,0.9)", borderwidth=1),
-        margin=dict(l=5, r=5, t=10, b=5), template="plotly_white", height=380
+        title=dict(text=f"<b>Perfil de Correntes - ADM (+ {sigla_a})</b>", font=dict(size=24, color='#000000')),
+        xaxis=dict(title=dict(text="<b>Amostras</b>", font=dict(size=19, color='#000000')), tickfont=dict(size=18, color='#000000')),
+        yaxis=dict(title=dict(text="<b>Corrente (A)</b>", font=dict(size=19, color='#000000')), tickfont=dict(size=18, color='#000000')),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font=dict(size=18, color='#000000'), bgcolor="rgba(255,255,255,0.9)", borderwidth=1),
+        margin=dict(l=5, r=5, t=55, b=5), template="plotly_white", height=400
     )
     st.plotly_chart(fig_a, use_container_width=True, config=CONFIG_IMG_GRAFICO)
 
@@ -636,18 +621,19 @@ with tab3:
     ]
 
     st.markdown("---")
-    st.subheader("📋 Quadro de Potências e Correntes - Medidores")
     
     fig_tab_m = go.Figure(data=[go.Table(
         columnwidth=[3.3, 1.3, 1.3, 1.3, 2.3],
-        header=dict(values=headers_tabela, fill_color='#1E3A8A', align='center', font=dict(color='white', size=19, family="Arial Black")),
-        cells=dict(values=val_tab_m, fill_color=[['#F3F4F6', '#ffffff']*4], align='center', font=dict(color='#000000', size=17, family="Arial"), height=37)
+        header=dict(values=headers_tabela, fill_color='#1E3A8A', align='center', font=dict(color='white', size=21, family="Arial Black")),
+        cells=dict(values=val_tab_m, fill_color=[['#F3F4F6', '#ffffff']*4], align='center', font=dict(color='#000000', size=19, family="Arial"), height=37)
     )])
-    fig_tab_m.update_layout(margin=dict(l=0, r=0, t=0, b=0), height=310)
+    fig_tab_m.update_layout(
+        title=dict(text="<b>Quadro de Potências e Correntes - Medidores</b>", font=dict(size=24, color='#000000')),
+        margin=dict(l=5, r=5, t=55, b=5), height=340
+    )
     st.plotly_chart(fig_tab_m, use_container_width=True, config=CONFIG_IMG_TABELA)
 
     st.markdown("---")
-    st.subheader(f"📈 Perfil de Correntes - Medidores (+ {sigla_m})")
     
     fig_m = go.Figure()
     fig_m.add_trace(go.Scatter(y=sr_med*num_cabos_m, mode='lines', name='R (Atual)', line=dict(color='#FCA5A5', width=2, dash='dot')))
@@ -657,14 +643,15 @@ with tab3:
     fig_m.add_trace(go.Scatter(y=st_med*num_cabos_m, mode='lines', name='T (Atual)', line=dict(color='#6EE7B7', width=2, dash='dot')))
     fig_m.add_trace(go.Scatter(y=t_tot_s_m, mode='lines', name=f'T (+{sigla_m})', line=dict(color='#059669', width=4)))
 
-    fig_m.add_hline(y=i_cond_tot_m, line_dash="dash", line_color="#D97706", line_width=3, annotation_text=f"<b>Cabo ({i_cond_tot_m}A)</b>", annotation_font=dict(size=16, color="#D97706"))
-    fig_m.add_hline(y=i_prot_tot_m, line_dash="dot", line_color="#7C3AED", line_width=3, annotation_text=f"<b>Prot ({i_prot_tot_m}A)</b>", annotation_font=dict(size=16, color="#7C3AED"))
+    fig_m.add_hline(y=i_cond_tot_m, line_dash="dash", line_color="#D97706", line_width=3, annotation_text=f"<b>Cabo ({i_cond_tot_m}A)</b>", annotation_font=dict(size=18, color="#D97706"))
+    fig_m.add_hline(y=i_prot_tot_m, line_dash="dot", line_color="#7C3AED", line_width=3, annotation_text=f"<b>Prot ({i_prot_tot_m}A)</b>", annotation_font=dict(size=18, color="#7C3AED"))
 
     fig_m.update_layout(
-        xaxis=dict(title=dict(text="<b>Amostras</b>", font=dict(size=17, color='#000000')), tickfont=dict(size=16, color='#000000')),
-        yaxis=dict(title=dict(text="<b>Corrente (A)</b>", font=dict(size=17, color='#000000')), tickfont=dict(size=16, color='#000000')),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font=dict(size=15, color='#000000'), bgcolor="rgba(255,255,255,0.9)", borderwidth=1),
-        margin=dict(l=5, r=5, t=10, b=5), template="plotly_white", height=380
+        title=dict(text=f"<b>Perfil de Correntes - Medidores (+ {sigla_m})</b>", font=dict(size=24, color='#000000')),
+        xaxis=dict(title=dict(text="<b>Amostras</b>", font=dict(size=19, color='#000000')), tickfont=dict(size=18, color='#000000')),
+        yaxis=dict(title=dict(text="<b>Corrente (A)</b>", font=dict(size=19, color='#000000')), tickfont=dict(size=18, color='#000000')),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font=dict(size=18, color='#000000'), bgcolor="rgba(255,255,255,0.9)", borderwidth=1),
+        margin=dict(l=5, r=5, t=55, b=5), template="plotly_white", height=400
     )
     st.plotly_chart(fig_m, use_container_width=True, config=CONFIG_IMG_GRAFICO)
 
@@ -678,7 +665,6 @@ with tab4:
     else:
         st.subheader("📊 Quadro Geral Comparativo")
         
-        # TABELA OTIMIZADA PARA LAUDO
         h_comp = ["<b>SETOR ANALISADO</b>", "<b>P. APARENTE (kVA)</b>", "<b>P. DISP. PROTEÇÃO</b>", "<b>P. DISP. CABOS</b>", "<b>P. DISP. REAL (kW)</b>"]
         v_comp = [
             ["Entrada Geral", "Quadro ADM", "Cx. Medidores"],
@@ -690,10 +676,13 @@ with tab4:
 
         fig_comp = go.Figure(data=[go.Table(
             columnwidth=[2, 1.5, 1.5, 1.5, 1.5],
-            header=dict(values=h_comp, fill_color='#1E3A8A', align='center', font=dict(color='white', size=19, family="Arial Black")),
-            cells=dict(values=v_comp, fill_color=[['#F3F4F6', '#ffffff']*2], align='center', font=dict(color='#000000', size=17, family="Arial"), height=37)
+            header=dict(values=h_comp, fill_color='#1E3A8A', align='center', font=dict(color='white', size=21, family="Arial Black")),
+            cells=dict(values=v_comp, fill_color=[['#F3F4F6', '#ffffff']*2], align='center', font=dict(color='#000000', size=19, family="Arial"), height=37)
         )])
-        fig_comp.update_layout(margin=dict(l=0, r=0, t=0, b=0), height=170)
+        fig_comp.update_layout(
+            title=dict(text="<b>Quadro Geral Comparativo</b>", font=dict(size=24, color='#000000')),
+            margin=dict(l=5, r=5, t=55, b=5), height=230
+        )
         st.plotly_chart(fig_comp, use_container_width=True, config=CONFIG_IMG_TABELA)
 
         st.markdown("---")
