@@ -11,12 +11,11 @@ import os
 st.set_page_config(page_title="Estudo de Demanda - Veículos Elétricos & Ar Condicionado", page_icon="⚡", layout="wide")
 
 # =====================================================================
-# CONFIGURAÇÃO DE EXPORTAÇÃO (16,91cm x 3,66cm aprox.)
+# CONFIGURAÇÃO DE EXPORTAÇÃO AJUSTADA (Sem cortes na tabela)
 # =====================================================================
-# Altura ligeiramente compensada para abrigar o título interno sem amassar os dados
 CONFIG_IMG_TABELA = {
     "toImageButtonOptions": {
-        "format": "png", "width": 1400, "height": 340, "scale": 3
+        "format": "png", "width": 1400, "height": 380, "scale": 3
     },
     "displayModeBar": True
 }
@@ -383,19 +382,29 @@ with tab1:
     )])
     fig_tab.update_layout(
         title=dict(text="<b>Quadro de Potências e Correntes - Entrada de Energia</b>", font=dict(size=24, color='#000000')),
-        margin=dict(l=5, r=5, t=55, b=5), height=340
+        margin=dict(l=5, r=5, t=55, b=5), height=380
     ) 
     st.plotly_chart(fig_tab, use_container_width=True, config=CONFIG_IMG_TABELA)
 
     st.markdown("---")
+    st.subheader(f"📈 Perfil de Correntes - Entrada de Energia (+ {sigla})")
     
+    # CHECKBOXES RESTAURADOS PARA SELEÇÃO DAS FASES NO GRÁFICO
+    col_cb1, col_cb2, col_cb3 = st.columns(3)
+    show_r = col_cb1.checkbox("Exibir Fases R", value=True, key="chk_r_geral")
+    show_s = col_cb2.checkbox("Exibir Fases S", value=True, key="chk_s_geral")
+    show_t = col_cb3.checkbox("Exibir Fases T", value=True, key="chk_t_geral")
+
     fig = go.Figure()
-    fig.add_trace(go.Scatter(y=serie_r_b.iloc[:min_len]*num_cabos, mode='lines', name='R (Atual)', line=dict(color='#FCA5A5', width=2, dash='dot')))
-    fig.add_trace(go.Scatter(y=r_tot_serie, mode='lines', name=f'R (+{sigla})', line=dict(color='#DC2626', width=4)))
-    fig.add_trace(go.Scatter(y=serie_s_b.iloc[:min_len]*num_cabos, mode='lines', name='S (Atual)', line=dict(color='#93C5FD', width=2, dash='dot')))
-    fig.add_trace(go.Scatter(y=s_tot_serie, mode='lines', name=f'S (+{sigla})', line=dict(color='#2563EB', width=4)))
-    fig.add_trace(go.Scatter(y=serie_t_b.iloc[:min_len]*num_cabos, mode='lines', name='T (Atual)', line=dict(color='#6EE7B7', width=2, dash='dot')))
-    fig.add_trace(go.Scatter(y=t_tot_serie, mode='lines', name=f'T (+{sigla})', line=dict(color='#059669', width=4)))
+    if show_r:
+        fig.add_trace(go.Scatter(y=serie_r_b.iloc[:min_len]*num_cabos, mode='lines', name='R (Atual)', line=dict(color='#FCA5A5', width=2, dash='dot')))
+        fig.add_trace(go.Scatter(y=r_tot_serie, mode='lines', name=f'R (+{sigla})', line=dict(color='#DC2626', width=4)))
+    if show_s:
+        fig.add_trace(go.Scatter(y=serie_s_b.iloc[:min_len]*num_cabos, mode='lines', name='S (Atual)', line=dict(color='#93C5FD', width=2, dash='dot')))
+        fig.add_trace(go.Scatter(y=s_tot_serie, mode='lines', name=f'S (+{sigla})', line=dict(color='#2563EB', width=4)))
+    if show_t:
+        fig.add_trace(go.Scatter(y=serie_t_b.iloc[:min_len]*num_cabos, mode='lines', name='T (Atual)', line=dict(color='#6EE7B7', width=2, dash='dot')))
+        fig.add_trace(go.Scatter(y=t_tot_serie, mode='lines', name=f'T (+{sigla})', line=dict(color='#059669', width=4)))
 
     fig.add_hline(y=i_cond_tot, line_dash="dash", line_color="#D97706", line_width=3, annotation_text=f"<b>Cabo ({i_cond_tot}A)</b>", annotation_font=dict(size=18, color="#D97706"))
     fig.add_hline(y=i_prot_tot, line_dash="dot", line_color="#7C3AED", line_width=3, annotation_text=f"<b>Prot ({i_prot_tot}A)</b>", annotation_font=dict(size=18, color="#7C3AED"))
@@ -509,19 +518,28 @@ with tab2:
     )])
     fig_tab_a.update_layout(
         title=dict(text="<b>Quadro de Potências e Correntes - ADM</b>", font=dict(size=24, color='#000000')),
-        margin=dict(l=5, r=5, t=55, b=5), height=340
+        margin=dict(l=5, r=5, t=55, b=5), height=380
     )
     st.plotly_chart(fig_tab_a, use_container_width=True, config=CONFIG_IMG_TABELA)
 
     st.markdown("---")
+    st.subheader(f"📈 Perfil de Correntes - ADM (+ {sigla_a})")
     
+    col_cb1_a, col_cb2_a, col_cb3_a = st.columns(3)
+    show_r_a = col_cb1_a.checkbox("Exibir Fases R (ADM)", value=True, key="chk_r_adm")
+    show_s_a = col_cb2_a.checkbox("Exibir Fases S (ADM)", value=True, key="chk_s_adm")
+    show_t_a = col_cb3_a.checkbox("Exibir Fases T (ADM)", value=True, key="chk_t_adm")
+
     fig_a = go.Figure()
-    fig_a.add_trace(go.Scatter(y=sr_a.iloc[:min_l_a]*num_cabos_a, mode='lines', name='R (Atual)', line=dict(color='#FCA5A5', width=2, dash='dot')))
-    fig_a.add_trace(go.Scatter(y=r_tot_s_a, mode='lines', name=f'R (+{sigla_a})', line=dict(color='#DC2626', width=4)))
-    fig_a.add_trace(go.Scatter(y=ss_a.iloc[:min_l_a]*num_cabos_a, mode='lines', name='S (Atual)', line=dict(color='#93C5FD', width=2, dash='dot')))
-    fig_a.add_trace(go.Scatter(y=s_tot_s_a, mode='lines', name=f'S (+{sigla_a})', line=dict(color='#2563EB', width=4)))
-    fig_a.add_trace(go.Scatter(y=st_a.iloc[:min_l_a]*num_cabos_a, mode='lines', name='T (Atual)', line=dict(color='#6EE7B7', width=2, dash='dot')))
-    fig_a.add_trace(go.Scatter(y=t_tot_s_a, mode='lines', name=f'T (+{sigla_a})', line=dict(color='#059669', width=4)))
+    if show_r_a:
+        fig_a.add_trace(go.Scatter(y=sr_a.iloc[:min_l_a]*num_cabos_a, mode='lines', name='R (Atual)', line=dict(color='#FCA5A5', width=2, dash='dot')))
+        fig_a.add_trace(go.Scatter(y=r_tot_s_a, mode='lines', name=f'R (+{sigla_a})', line=dict(color='#DC2626', width=4)))
+    if show_s_a:
+        fig_a.add_trace(go.Scatter(y=ss_a.iloc[:min_l_a]*num_cabos_a, mode='lines', name='S (Atual)', line=dict(color='#93C5FD', width=2, dash='dot')))
+        fig_a.add_trace(go.Scatter(y=s_tot_s_a, mode='lines', name=f'S (+{sigla_a})', line=dict(color='#2563EB', width=4)))
+    if show_t_a:
+        fig_a.add_trace(go.Scatter(y=st_a.iloc[:min_l_a]*num_cabos_a, mode='lines', name='T (Atual)', line=dict(color='#6EE7B7', width=2, dash='dot')))
+        fig_a.add_trace(go.Scatter(y=t_tot_s_a, mode='lines', name=f'T (+{sigla_a})', line=dict(color='#059669', width=4)))
 
     fig_a.add_hline(y=i_cond_tot_a, line_dash="dash", line_color="#D97706", line_width=3, annotation_text=f"<b>Cabo ({i_cond_tot_a}A)</b>", annotation_font=dict(size=18, color="#D97706"))
     fig_a.add_hline(y=i_prot_tot_a, line_dash="dot", line_color="#7C3AED", line_width=3, annotation_text=f"<b>Prot ({i_prot_tot_a}A)</b>", annotation_font=dict(size=18, color="#7C3AED"))
@@ -590,8 +608,8 @@ with tab3:
     t_tot_s_m = (st_med * num_cabos_m) + corr_add_m
 
     i_pico_r_m = float(r_tot_s_m.max()) if len(r_tot_s_m)>0 else 0
-    i_pico_s_m = float(s_tot_s_m.max()) if len(s_tot_s_m)>0 else 0
-    i_pico_t_m = float(t_tot_s_m.max()) if len(t_tot_s_m)>0 else 0
+    i_pico_s_m = float(s_tot_s_m.max()) if len(r_tot_s_m)>0 else 0
+    i_pico_t_m = float(t_tot_s_m.max()) if len(r_tot_s_m)>0 else 0
     i_max_p_m = max(i_pico_r_m, i_pico_s_m, i_pico_t_m)
 
     p_apar_r_m, p_apar_s_m, p_apar_t_m = i_pico_r_m * v_fase_m, i_pico_s_m * v_fase_m, i_pico_t_m * v_fase_m
@@ -629,19 +647,28 @@ with tab3:
     )])
     fig_tab_m.update_layout(
         title=dict(text="<b>Quadro de Potências e Correntes - Medidores</b>", font=dict(size=24, color='#000000')),
-        margin=dict(l=5, r=5, t=55, b=5), height=340
+        margin=dict(l=5, r=5, t=55, b=5), height=380
     )
     st.plotly_chart(fig_tab_m, use_container_width=True, config=CONFIG_IMG_TABELA)
 
     st.markdown("---")
+    st.subheader(f"📈 Perfil de Correntes - Medidores (+ {sigla_m})")
     
+    col_cb1_m, col_cb2_m, col_cb3_m = st.columns(3)
+    show_r_m = col_cb1_m.checkbox("Exibir Fases R (Medidores)", value=True, key="chk_r_med")
+    show_s_m = col_cb2_m.checkbox("Exibir Fases S (Medidores)", value=True, key="chk_s_med")
+    show_t_m = col_cb3_m.checkbox("Exibir Fases T (Medidores)", value=True, key="chk_t_med")
+
     fig_m = go.Figure()
-    fig_m.add_trace(go.Scatter(y=sr_med*num_cabos_m, mode='lines', name='R (Atual)', line=dict(color='#FCA5A5', width=2, dash='dot')))
-    fig_m.add_trace(go.Scatter(y=r_tot_s_m, mode='lines', name=f'R (+{sigla_m})', line=dict(color='#DC2626', width=4)))
-    fig_m.add_trace(go.Scatter(y=ss_med*num_cabos_m, mode='lines', name='S (Atual)', line=dict(color='#93C5FD', width=2, dash='dot')))
-    fig_m.add_trace(go.Scatter(y=s_tot_s_m, mode='lines', name=f'S (+{sigla_m})', line=dict(color='#2563EB', width=4)))
-    fig_m.add_trace(go.Scatter(y=st_med*num_cabos_m, mode='lines', name='T (Atual)', line=dict(color='#6EE7B7', width=2, dash='dot')))
-    fig_m.add_trace(go.Scatter(y=t_tot_s_m, mode='lines', name=f'T (+{sigla_m})', line=dict(color='#059669', width=4)))
+    if show_r_m:
+        fig_m.add_trace(go.Scatter(y=sr_med*num_cabos_m, mode='lines', name='R (Atual)', line=dict(color='#FCA5A5', width=2, dash='dot')))
+        fig_m.add_trace(go.Scatter(y=r_tot_s_m, mode='lines', name=f'R (+{sigla_m})', line=dict(color='#DC2626', width=4)))
+    if show_s_m:
+        fig_m.add_trace(go.Scatter(y=ss_med*num_cabos_m, mode='lines', name='S (Atual)', line=dict(color='#93C5FD', width=2, dash='dot')))
+        fig_m.add_trace(go.Scatter(y=s_tot_s_m, mode='lines', name=f'S (+{sigla_m})', line=dict(color='#2563EB', width=4)))
+    if show_t_m:
+        fig_m.add_trace(go.Scatter(y=st_med*num_cabos_m, mode='lines', name='T (Atual)', line=dict(color='#6EE7B7', width=2, dash='dot')))
+        fig_m.add_trace(go.Scatter(y=t_tot_s_m, mode='lines', name=f'T (+{sigla_m})', line=dict(color='#059669', width=4)))
 
     fig_m.add_hline(y=i_cond_tot_m, line_dash="dash", line_color="#D97706", line_width=3, annotation_text=f"<b>Cabo ({i_cond_tot_m}A)</b>", annotation_font=dict(size=18, color="#D97706"))
     fig_m.add_hline(y=i_prot_tot_m, line_dash="dot", line_color="#7C3AED", line_width=3, annotation_text=f"<b>Prot ({i_prot_tot_m}A)</b>", annotation_font=dict(size=18, color="#7C3AED"))
@@ -681,7 +708,7 @@ with tab4:
         )])
         fig_comp.update_layout(
             title=dict(text="<b>Quadro Geral Comparativo</b>", font=dict(size=24, color='#000000')),
-            margin=dict(l=5, r=5, t=55, b=5), height=230
+            margin=dict(l=5, r=5, t=55, b=5), height=250
         )
         st.plotly_chart(fig_comp, use_container_width=True, config=CONFIG_IMG_TABELA)
 
