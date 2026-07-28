@@ -7,12 +7,7 @@ import pickle
 import os
 
 # Configuração da Página
-st.set_page_config(
-    page_title="Estudo de Demanda - Veículos Elétricos & Ar
-    Condicionado",
-    page_icon="⚡",
-    layout="wide"
-)
+st.set_page_config(page_title="Estudo de Demanda - Veículos Elétricos & Ar Condicionado", page_icon="⚡", layout="wide")
 
 # Estilização CSS customizada
 st.markdown("""
