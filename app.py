@@ -8,7 +8,8 @@ import os
 
 # Configuração da Página
 st.set_page_config(
-    page_title="Estudo de Demanda - Veículos Elétricos & Ar Condicionado",
+    page_title="Estudo de Demanda - Veículos Elétricos & Ar
+    Condicionado",
     page_icon="⚡",
     layout="wide"
 )
@@ -111,7 +112,7 @@ def reset_app():
     st.session_state["arquivos_data"] = {}
     st.session_state["current_report_name"] = ""
 
-# --- BARRA LATERAL (MENU DE RELATÓRIOS) ---
+# --- BARRA LATERAL (MENU DE RELATÓRIOS SEGURO) ---
 st.sidebar.markdown("### 💾 Gerenciador de Relatórios")
 
 if st.sidebar.button("➕ Criar Novo Relatório", type="primary", use_container_width=True):
@@ -124,32 +125,33 @@ st.sidebar.markdown("**📂 Histórico Salvo (Permanente)**")
 if not st.session_state["saved_reports"]:
     st.sidebar.info("Nenhum relatório salvo no momento.")
 else:
-    for idx, rep_name in enumerate(list(st.session_state["saved_reports"].keys())):
-        col_name, col_del = st.sidebar.columns([4, 1])
-        
-        with col_name:
-            # Usando chave estática baseada em índice para evitar o conflito de valores do Streamlit
-            if st.sidebar.button(f"📄 {rep_name}", use_container_width=True, key=f"btn_load_{idx}"):
-                report_data = st.session_state["saved_reports"][rep_name]
+    lista_relatorios = list(st.session_state["saved_reports"].keys())
+    relatorio_selecionado = st.sidebar.selectbox("Selecione um relatório:", lista_relatorios, key="selectbox_historico")
+    
+    col_b1, col_b2 = st.sidebar.columns(2)
+    with col_b1:
+        if st.button("📂 Carregar", use_container_width=True, key="btn_load_action"):
+            if relatorio_selecionado in st.session_state["saved_reports"]:
+                report_data = st.session_state["saved_reports"][relatorio_selecionado]
                 
-                # Limpa os widgets atuais de forma segura
                 for k in list(st.session_state.keys()):
-                    if k not in ["saved_reports", "reset_key", "current_report_name"]:
+                    if k not in ["saved_reports", "reset_key", "current_report_name", "selectbox_historico"]:
                         del st.session_state[k]
                 
-                # Restaura os dados salvos
                 for k, v in report_data.items():
                     st.session_state[k] = copy.deepcopy(v)
                     
-                st.session_state["current_report_name"] = rep_name
+                st.session_state["current_report_name"] = relatorio_selecionado
                 st.session_state["reset_key"] += 1
+                st.toast(f"Relatório '{relatorio_selecionado}' carregado!", icon="📂")
                 st.rerun()
                 
-        with col_del:
-            if st.sidebar.button("🗑️", key=f"del_{rep_name}", help=f"Excluir '{rep_name}'"):
-                del st.session_state["saved_reports"][rep_name]
+    with col_b2:
+        if st.button("🗑️ Excluir", use_container_width=True, key="btn_del_action"):
+            if relatorio_selecionado in st.session_state["saved_reports"]:
+                del st.session_state["saved_reports"][relatorio_selecionado]
                 salvar_dados_arquivo(st.session_state["saved_reports"])
-                if st.session_state["current_report_name"] == rep_name:
+                if st.session_state["current_report_name"] == relatorio_selecionado:
                     st.session_state["current_report_name"] = ""
                 st.toast(f"Relatório apagado!", icon="🗑️")
                 st.rerun()
@@ -626,7 +628,7 @@ De forma similar, o quadro administrativo apresenta uma potência disponível de
                 else:
                     estado_salvo = {}
                     for chave, valor in st.session_state.items():
-                        if chave not in ["saved_reports", "reset_key", "current_report_name"] and not chave.startswith("FormSubmitter") and not chave.startswith("file_geral") and not chave.startswith("file_adm") and not chave.startswith("btn_load_"):
+                        if chave not in ["saved_reports", "reset_key", "current_report_name", "selectbox_historico"] and not chave.startswith("FormSubmitter") and not chave.startswith("file_geral") and not chave.startswith("file_adm") and not chave.startswith("btn_"):
                             estado_salvo[chave] = copy.deepcopy(valor)
                     
                     st.session_state["saved_reports"][nome_novo_relatorio] = estado_salvo
