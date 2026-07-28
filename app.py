@@ -3,6 +3,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import numpy as np
 import copy
+import pickle
+import os
 
 # Configuração da Página
 st.set_page_config(
@@ -66,6 +68,22 @@ TABELA_CABOS = {
 
 INDEX_PADRAO = list(TABELA_CABOS.keys()).index("35 mm² - 1kV")
 
+# SISTEMA DE BANCO DE DADOS LOCAL (ARQUIVO PICKLE)
+ARQUIVO_BANDO_DADOS = "banco_relatorios.pkl"
+
+def carregar_dados():
+    if os.path.exists(ARQUIVO_BANDO_DADOS):
+        try:
+            with open(ARQUIVO_BANDO_DADOS, "rb") as f:
+                return pickle.load(f)
+        except Exception:
+            return {}
+    return {}
+
+def salvar_dados_arquivo(dados):
+    with open(ARQUIVO_BANDO_DADOS, "wb") as f:
+        pickle.dump(dados, f)
+
 def fmt(val, dec=2):
     return f"{val:.{dec}f}".replace('.', ',')
 
@@ -78,16 +96,15 @@ def update_cap_adm():
         st.session_state['a_cap'] = float(TABELA_CABOS[st.session_state['a_bitola']])
 
 # --- INICIALIZAÇÃO DE VARIÁVEIS NA MEMÓRIA ---
+if "saved_reports" not in st.session_state: st.session_state["saved_reports"] = carregar_dados() # Carrega os dados definitivos no início
 if "dados_geral" not in st.session_state: st.session_state["dados_geral"] = {}
 if "dados_adm" not in st.session_state: st.session_state["dados_adm"] = {}
-if "saved_reports" not in st.session_state: st.session_state["saved_reports"] = {}
 if "reset_key" not in st.session_state: st.session_state["reset_key"] = 0
 if "arquivos_data" not in st.session_state: st.session_state["arquivos_data"] = {}
 
 # Função para resetar e iniciar um novo relatório
 def reset_app():
     st.session_state["reset_key"] += 1
-    # Mantém apenas o histórico de relatórios salvos e a chave de reset, limpa o resto
     keys_to_delete = [k for k in st.session_state.keys() if k not in ["saved_reports", "reset_key"]]
     for k in keys_to_delete:
         del st.session_state[k]
@@ -109,15 +126,27 @@ if st.sidebar.button("➕ Criar Novo Relatório", type="primary", use_container_
     st.rerun()
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("**📂 Histórico Salvo**")
+st.sidebar.markdown("**📂 Histórico Salvo (Permanente)**")
 
 if not st.session_state["saved_reports"]:
     st.sidebar.info("Nenhum relatório salvo no momento.")
 else:
-    for rep_name in st.session_state["saved_reports"]:
-        if st.sidebar.button(f"📄 {rep_name}", use_container_width=True):
-            load_report(rep_name)
-            st.rerun()
+    for rep_name in list(st.session_state["saved_reports"].keys()):
+        # Divide o espaço na barra lateral: maior para o nome, menor para lixeira
+        col_name, col_del = st.sidebar.columns([4, 1])
+        
+        with col_name:
+            if st.button(f"📄 {rep_name}", use_container_width=True, key=f"load_{rep_name}"):
+                load_report(rep_name)
+                st.rerun()
+                
+        with col_del:
+            # Botão de excluir
+            if st.button("🗑️", key=f"del_{rep_name}", help=f"Excluir '{rep_name}'"):
+                del st.session_state["saved_reports"][rep_name]
+                salvar_dados_arquivo(st.session_state["saved_reports"]) # Atualiza o arquivo físico
+                st.toast(f"Relatório apagado!", icon="🗑️")
+                st.rerun()
 
 
 # Extração de Dados
@@ -150,17 +179,18 @@ with tab1:
     )
     sigla_tipo = "VE" if "Veículos" in tipo_analise else "AC"
 
-    # Chave dinâmica no uploader para ele limpar quando clicar em Novo Relatório
     file_geral = st.file_uploader("📂 Arraste e solte o arquivo Excel (.xlsx) ou CSV do Analisador de Energia:", type=["xlsx", "csv"], key=f"file_geral_{st.session_state['reset_key']}")
     
-    # Dados Base
+    # Dados Base Iniciais
     serie_r_base, serie_s_base, serie_t_base = pd.Series([25.0, 30.2, 31.29, 28.4, 26.1]), pd.Series([4.5, 5.2, 5.81, 5.0, 4.8]), pd.Series([26.0, 31.0, 32.16, 29.5, 27.0])
 
-    # Se já tem dados na memória (ex: carregou relatório antigo)
+    # Puxa da memória se os dados do excel já estiverem salvos
     if "g_serie_r" in st.session_state["arquivos_data"]:
         serie_r_base = st.session_state["arquivos_data"]["g_serie_r"]
         serie_s_base = st.session_state["arquivos_data"]["g_serie_s"]
         serie_t_base = st.session_state["arquivos_data"]["g_serie_t"]
+        if file_geral is None:
+            st.info("ℹ️ Dados do Excel recuperados do relatório salvo.")
 
     if file_geral is not None:
         try:
@@ -350,6 +380,8 @@ with tab2:
         serie_r_base_a = st.session_state["arquivos_data"]["a_serie_r"]
         serie_s_base_a = st.session_state["arquivos_data"]["a_serie_s"]
         serie_t_base_a = st.session_state["arquivos_data"]["a_serie_t"]
+        if file_adm is None:
+            st.info("ℹ️ Dados do Excel recuperados do relatório salvo.")
 
     if file_adm is not None:
         try:
@@ -570,10 +602,7 @@ with tab3:
 
         texto_laudo = f"""De acordo com as medições realizadas, verificou-se que o condomínio dispõe de uma potência de {fmt(p_disp_entrada_kva)} kVA na entrada de energia. Para garantir maior segurança e confiabilidade ao sistema elétrico, recomenda-se a utilização de até 80% desse valor ({fmt(p_disp_entrada_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema.
 
-De forma similar, o quadro administrativo apresenta uma potência disponível de aproximadamente {fmt(p_disp_adm_kva)} kVA. Sugere-se, pelos mesmos critérios de segurança operacional, limitar o uso a até 80% dessa capacidade ({fmt(p_disp_adm_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema.
-
-Em síntese, conclui-se que, nas condições atuais, o condomínio dispõe de capacidade para a instalação de até {int(qtd_op1)} carregadores veiculares de 7.4KW ou, alternativamente, {int(qtd_op2)} carregadores veiculares de 3.7KW, no cenário sem a adoção do sistema de gerenciamento de carga.
-"""
+De forma similar, o quadro administrativo apresenta uma potência disponível de aproximadamente {fmt(p_disp_adm_kva)} kVA. Sugere-se, pelos mesmos critérios de segurança operacional, limitar o uso a até 80% dessa capacidade ({fmt(p_disp_adm_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema."""
 
         st.success(texto_laudo)
         st.code(texto_laudo, language="text")
@@ -592,16 +621,16 @@ Em síntese, conclui-se que, nas condições atuais, o condomínio dispõe de ca
                 if not nome_novo_relatorio:
                     st.warning("⚠️ Digite um nome para o relatório antes de salvar.")
                 else:
-                    # Varre a memória e cria uma cópia profunda
+                    # Varre a memória e cria uma cópia profunda ignorando caixas de arquivos (incompatíveis com banco permanente)
                     estado_salvo = {}
                     for chave, valor in st.session_state.items():
-                        if chave not in ["saved_reports", "reset_key"] and not chave.startswith("FormSubmitter"):
+                        if chave not in ["saved_reports", "reset_key"] and not chave.startswith("FormSubmitter") and not chave.startswith("file_geral") and not chave.startswith("file_adm"):
                             estado_salvo[chave] = copy.deepcopy(valor)
                     
                     st.session_state["saved_reports"][nome_novo_relatorio] = estado_salvo
                     
-                    # Usa um toast (notificação flutuante) para o aviso não sumir no rerun
-                    st.toast(f"Relatório '{nome_novo_relatorio}' salvo com sucesso!", icon="✅")
+                    # Salva no arquivo local oculto para resistir ao F5
+                    salvar_dados_arquivo(st.session_state["saved_reports"])
                     
-                    # Força a tela a recarregar para atualizar a barra lateral na hora!
+                    st.toast(f"Relatório '{nome_novo_relatorio}' salvo permanentemente!", icon="✅")
                     st.rerun()
