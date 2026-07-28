@@ -3,7 +3,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import numpy as np
 import copy
-import pickle
+import sqlite3
+import hashlib
 import os
 
 # Configuração da Página
@@ -43,9 +44,191 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("⚡ Estudo de Demanda Elétrica & Capacidade (VE / AC)")
+# --- CONFIGURAÇÃO DE BANCO DE DADOS SQLITE ---
+DB_NAME = "banco_usuarios_relatorios.db"
 
-# Variáveis Globais
+def init_db():
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        # Tabela de Usuários
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS usuarios (
+                username TEXT PRIMARY KEY,
+                password TEXT NOT NULL,
+                is_admin INTEGER NOT NULL
+            )
+        ''')
+        # Tabela de Relatórios (vinculados ao dono)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS relatorios (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                nome_relatorio TEXT NOT NULL,
+                dados_pickle BLOB NOT NULL
+            )
+        ''')
+        conn.commit()
+        
+        # Cria admin padrão caso não exista nenhum usuário
+        cursor.execute("SELECT COUNT(*) FROM usuarios")
+        if cursor.fetchone()[0] == 0:
+            hashed_pw = hashlib.sha256("admin123".encode()).hexdigest()
+            cursor.execute("INSERT INTO usuarios (username, password, is_admin) VALUES (?, ?, ?)", ("admin", hashed_pw, 1))
+            conn.commit()
+    except Exception as e:
+        st.error(f"Erro ao inicializar o banco de dados: {e}")
+    finally:
+        conn.close()
+
+init_db()
+
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def verificar_login(username, password):
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        cursor.execute("SELECT password, is_admin FROM usuarios WHERE username = ?", (username,))
+        row = cursor.fetchone()
+        conn.close()
+        if row and row[0] == hash_password(password):
+            return True, bool(row[1])
+    except Exception:
+        pass
+    return False, False
+
+def cadastrar_usuario(username, password, is_admin=0):
+    if not username or not password:
+        return False, "Preencha usuário e senha."
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        cursor.execute("SELECT username FROM usuarios WHERE username = ?", (username,))
+        if cursor.fetchone():
+            conn.close()
+            return False, "Usuário já existe."
+        cursor.execute("INSERT INTO usuarios (username, password, is_admin) VALUES (?, ?, ?)", 
+                       (username, hash_password(password), 1 if is_admin else 0))
+        conn.commit()
+        conn.close()
+        return True, "Usuário cadastrado com sucesso!"
+    except Exception as e:
+        return False, f"Erro ao cadastrar: {e}"
+
+def excluir_usuario(username):
+    if username == "admin":
+        return False, "O usuário administrador principal não pode ser excluído."
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM usuarios WHERE username = ?", (username,))
+        cursor.execute("DELETE FROM relatorios WHERE username = ?", (username,))
+        conn.commit()
+        conn.close()
+        return True, "Usuário e seus relatórios excluídos com sucesso!"
+    except Exception as e:
+        return False, f"Erro ao excluir: {e}"
+
+def listar_usuarios():
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        cursor.execute("SELECT username, is_admin FROM usuarios")
+        rows = cursor.fetchall()
+        conn.close()
+        return rows
+    except Exception:
+        return []
+
+def salvar_relatorio_db(username, nome_relatorio, estado_dict):
+    try:
+        import pickle
+        dados_blob = pickle.dumps(estado_dict)
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        # Verifica se já existe um relatório com este nome para este usuário
+        cursor.execute("SELECT id FROM relatorios WHERE username = ? AND nome_relatorio = ?", (username, nome_relatorio))
+        row = cursor.fetchone()
+        if row:
+            cursor.execute("UPDATE relatorios SET dados_pickle = ? WHERE id = ?", (dados_blob, row[0]))
+        else:
+            cursor.execute("INSERT INTO relatorios (username, nome_relatorio, dados_pickle) VALUES (?, ?, ?)", (username, nome_relatorio, dados_blob))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        st.error(f"Erro ao salvar no banco: {e}")
+        return False
+
+def carregar_relatorio_db(username, nome_relatorio):
+    try:
+        import pickle
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        cursor.execute("SELECT dados_pickle FROM relatorios WHERE username = ? AND nome_relatorio = ?", (username, nome_relatorio))
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            return pickle.loads(row[0])
+    except Exception:
+        pass
+    return None
+
+def excluir_relatorio_db(username, nome_relatorio):
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM relatorios WHERE username = ? AND nome_relatorio = ?", (username, nome_relatorio))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception:
+        return False
+
+def listar_relatorios_db(username=None):
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        if username:
+            cursor.execute("SELECT nome_relatorio, username FROM relatorios WHERE username = ?", (username,))
+        else:
+            cursor.execute("SELECT nome_relatorio, username FROM relatorios")
+        rows = cursor.fetchall()
+        conn.close()
+        return rows
+    except Exception:
+        return []
+
+# --- CONTROLE DE SESSÃO DE LOGIN ---
+if "logged_in" not in st.session_state: st.session_state["logged_in"] = False
+if "username" not in st.session_state: st.session_state["username"] = ""
+if "is_admin" not in st.session_state: st.session_state["is_admin"] = False
+
+# TELA DE LOGIN CASO NÃO ESTEJA LOGADO
+if not st.session_state["logged_in"]:
+    st.title("🔐 Acesso Restrito - Estudo de Demanda")
+    st.markdown("Por favor, faça login para continuar.")
+    
+    with st.form("form_login"):
+        user_input = st.text_input("Usuário:")
+        pass_input = st.text_input("Senha:", type="password")
+        submit_login = st.form_submit_button("Entrar", type="primary")
+        
+        if submit_login:
+            ok, admin_status = verificar_login(user_input, pass_input)
+            if ok:
+                st.session_state["logged_in"] = True
+                st.session_state["username"] = user_input
+                st.session_state["is_admin"] = admin_status
+                st.success("Login efetuado com sucesso!")
+                st.rerun()
+            else:
+                st.error("Usuário ou senha incorretos.")
+    st.stop()
+
+# --- VARIÁVEIS GLOBAIS DE ENGENHARIA ---
 TABELA_CABOS = {
     "0,5 mm² - 750V": 8.0, "0,75 mm² - 750V": 10.0, "1 mm² - 750V": 12.0, "1,5 mm² - 750V": 15.5,
     "2,5 mm² - 750V": 21.0, "4 mm² - 750V": 28.0, "6 mm² - 750V": 36.0, "10 mm² - 750V": 50.0,
@@ -63,20 +246,6 @@ TABELA_CABOS = {
 }
 
 INDEX_PADRAO = list(TABELA_CABOS.keys()).index("35 mm² - 1kV")
-ARQUIVO_BANDO_DADOS = "banco_relatorios.pkl"
-
-def carregar_dados():
-    if os.path.exists(ARQUIVO_BANDO_DADOS):
-        try:
-            with open(ARQUIVO_BANDO_DADOS, "rb") as f:
-                return pickle.load(f)
-        except Exception:
-            return {}
-    return {}
-
-def salvar_dados_arquivo(dados):
-    with open(ARQUIVO_BANDO_DADOS, "wb") as f:
-        pickle.dump(dados, f)
 
 def fmt(val, dec=2):
     return f"{val:.{dec}f}".replace('.', ',')
@@ -93,8 +262,7 @@ def update_cap_med():
     if st.session_state.get('m_bitola') in TABELA_CABOS:
         st.session_state['m_cap'] = float(TABELA_CABOS[st.session_state['m_bitola']])
 
-# --- INICIALIZAÇÃO DE VARIÁVEIS NA MEMÓRIA ---
-if "saved_reports" not in st.session_state: st.session_state["saved_reports"] = carregar_dados()
+# Inicialização de Variáveis na Memória
 if "current_report_name" not in st.session_state: st.session_state["current_report_name"] = ""
 if "dados_geral" not in st.session_state: st.session_state["dados_geral"] = {}
 if "dados_adm" not in st.session_state: st.session_state["dados_adm"] = {}
@@ -104,7 +272,8 @@ if "arquivos_data" not in st.session_state: st.session_state["arquivos_data"] = 
 
 def reset_app():
     st.session_state["reset_key"] += 1
-    keys_to_delete = [k for k in st.session_state.keys() if k not in ["saved_reports", "reset_key", "current_report_name"]]
+    keys_to_keep = ["logged_in", "username", "is_admin", "reset_key"]
+    keys_to_delete = [k for k in st.session_state.keys() if k not in keys_to_keep]
     for k in keys_to_delete:
         del st.session_state[k]
     st.session_state["dados_geral"] = {}
@@ -113,7 +282,15 @@ def reset_app():
     st.session_state["arquivos_data"] = {}
     st.session_state["current_report_name"] = ""
 
-# --- BARRA LATERAL (MENU DE RELATÓRIOS SEGURO) ---
+# --- BARRA LATERAL (MENU DE RELATÓRIOS E PERFIL) ---
+st.sidebar.markdown(f"👤 **Logado como:** `{st.session_state['username']}` " + ("*(Admin)*" if st.session_state['is_admin'] else ""))
+if st.sidebar.button("🚪 Sair (Logout)", use_container_width=True):
+    st.session_state["logged_in"] = False
+    st.session_state["username"] = ""
+    st.session_state["is_admin"] = False
+    st.rerun()
+
+st.sidebar.markdown("---")
 st.sidebar.markdown("### 💾 Gerenciador de Relatórios")
 
 if st.sidebar.button("➕ Criar Novo Relatório", type="primary", use_container_width=True):
@@ -121,27 +298,38 @@ if st.sidebar.button("➕ Criar Novo Relatório", type="primary", use_container_
     st.rerun()
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("**📂 Histórico Salvo (Permanente)**")
+if st.session_state["is_admin"]:
+    st.sidebar.markdown("**📂 Histórico (Visão Geral de Todos os Usuários)**")
+    lista_db = listar_relatorios_db(None) # Admin vê todos
+else:
+    st.sidebar.markdown("**📂 Histórico Salvo (Seus Relatórios)**")
+    lista_db = listar_relatorios_db(st.session_state["username"])
 
-if not st.session_state["saved_reports"]:
+if not lista_db:
     st.sidebar.info("Nenhum relatório salvo no momento.")
 else:
-    lista_relatorios = list(st.session_state["saved_reports"].keys())
-    relatorio_selecionado = st.sidebar.selectbox("Selecione um relatório:", lista_relatorios, key="selectbox_historico")
+    # Formata opções para o selectbox indicando o dono se for admin
+    if st.session_state["is_admin"]:
+        opcoes_map = {f"{item[0]} (por: {item[1]})": item for item in lista_db}
+        selecao_label = st.sidebar.selectbox("Selecione um relatório:", list(opcoes_map.keys()), key="selectbox_historico")
+        relatorio_selecionado, dono_relatorio = opcoes_map[selecao_label]
+    else:
+        opcoes_map = {item[0]: item for item in lista_db}
+        selecao_label = st.sidebar.selectbox("Selecione um relatório:", list(opcoes_map.keys()), key="selectbox_historico")
+        relatorio_selecionado = opcoes_map[selecao_label]
+        dono_relatorio = st.session_state["username"]
     
     col_b1, col_b2 = st.sidebar.columns(2)
     with col_b1:
         if st.button("📂 Carregar", use_container_width=True, key="btn_load_action"):
-            if relatorio_selecionado in st.session_state["saved_reports"]:
-                report_data = st.session_state["saved_reports"][relatorio_selecionado]
-                
+            report_data = carregar_relatorio_db(dono_relatorio, relatorio_selecionado)
+            if report_data:
+                keys_to_keep = ["logged_in", "username", "is_admin", "reset_key", "selectbox_historico"]
                 for k in list(st.session_state.keys()):
-                    if k not in ["saved_reports", "reset_key", "current_report_name", "selectbox_historico"]:
+                    if k not in keys_to_keep:
                         del st.session_state[k]
-                
                 for k, v in report_data.items():
                     st.session_state[k] = copy.deepcopy(v)
-                    
                 st.session_state["current_report_name"] = relatorio_selecionado
                 st.session_state["reset_key"] += 1
                 st.toast(f"Relatório '{relatorio_selecionado}' carregado!", icon="📂")
@@ -149,15 +337,42 @@ else:
                 
     with col_b2:
         if st.button("🗑️ Excluir", use_container_width=True, key="btn_del_action"):
-            if relatorio_selecionado in st.session_state["saved_reports"]:
-                del st.session_state["saved_reports"][relatorio_selecionado]
-                salvar_dados_arquivo(st.session_state["saved_reports"])
+            if excluir_relatorio_db(dono_relatorio, relatorio_selecionado):
                 if st.session_state["current_report_name"] == relatorio_selecionado:
                     st.session_state["current_report_name"] = ""
-                st.toast(f"Relatório apagado!", icon="🗑️")
+                st.toast("Relatório apagado!", icon="🗑️")
                 st.rerun()
 
-# Extração de Dados
+# Painel exclusivo de Administração de Usuários na Barra Lateral
+if st.session_state["is_admin"]:
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 👑 Painel Admin: Usuários")
+    with st.sidebar.expander("Gerenciar Usuários"):
+        novo_user = st.text_input("Novo Usuário:", key="adm_novo_user")
+        nova_senha = st.text_input("Nova Senha:", type="password", key="adm_nova_pass")
+        e_admin = st.checkbox("Tornar Administrador", key="adm_e_admin")
+        
+        if st.button("Adicionar Usuário"):
+            ok, msg = cadastrar_usuario(novo_user, nova_senha, e_admin)
+            if ok: st.success(msg)
+            else: st.error(msg)
+            
+        st.markdown("---")
+        st.markdown("**Usuários Cadastrados:**")
+        usuarios_cad = listar_usuarios()
+        for u, adm in usuarios_cad:
+            col_u1, col_u2 = st.columns([3, 1])
+            col_u1.text(f"{u} {'(Admin)' if adm else ''}")
+            if u != "admin":
+                if col_u2.button("X", key=f"del_u_{u}"):
+                    ok, msg = excluir_usuario(u)
+                    if ok:
+                        st.success(msg)
+                        st.rerun()
+                    else:
+                        st.error(msg)
+
+# Extração de Dados de Arquivos
 def extrair_dados_completos(df):
     try:
         cols_numericas = []
@@ -174,6 +389,8 @@ def extrair_dados_completos(df):
     except Exception:
         pass
     return None, None, None
+
+st.title("⚡ Estudo de Demanda Elétrica & Capacidade (VE / AC)")
 
 tab1, tab2, tab3, tab4 = st.tabs([
     "🔌 1. Entrada de Energia (Geral)", 
@@ -304,7 +521,6 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
     p_apar_r, p_apar_s, p_apar_t = i_pico_r * tensao_fase, i_pico_s * tensao_fase, i_pico_t * tensao_fase
     p_apar_total = p_apar_r + p_apar_s + p_apar_t
 
-    # Salvando as séries brutas e processadas no session_state para uso posterior na Aba 3
     st.session_state["serie_r_geral"] = r_base_total_serie
     st.session_state["serie_s_geral"] = s_base_total_serie
     st.session_state["serie_t_geral"] = t_base_total_serie
@@ -495,7 +711,6 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
     p_apar_r_a, p_apar_s_a, p_apar_t_a = i_pico_r_a * tensao_fase_adm, i_pico_s_a * tensao_fase_adm, i_pico_t_a * tensao_fase_adm
     p_apar_total_a = p_apar_r_a + p_apar_s_a + p_apar_t_a
 
-    # Salvando as séries brutas e processadas no session_state para uso posterior na Aba 3
     st.session_state["serie_r_adm"] = r_base_total_serie_a
     st.session_state["serie_s_adm"] = s_base_total_serie_a
     st.session_state["serie_t_adm"] = t_base_total_serie_a
@@ -592,7 +807,6 @@ with tab3:
         i_protecao_med = st.number_input("Corrente do Dispositivo de Proteção por fase (A):", value=100.0, key="m_prot")
         tensao_fase_med = st.number_input("Tensão de Fase (V):", value=127.0, key="m_v")
 
-    # Recupera as séries da Aba 1 e Aba 2 se existirem no session_state, senão usa padrão de demonstração
     sr_g = st.session_state.get("serie_r_geral", pd.Series([25.0, 30.2, 31.29, 28.4, 26.1]))
     ss_g = st.session_state.get("serie_s_geral", pd.Series([4.5, 5.2, 5.81, 5.0, 4.8]))
     st_g = st.session_state.get("serie_t_geral", pd.Series([26.0, 31.0, 32.16, 29.5, 27.0]))
@@ -601,7 +815,6 @@ with tab3:
     ss_a = st.session_state.get("serie_s_adm", pd.Series([23.06, 21.0, 22.5]))
     st_a = st.session_state.get("serie_t_adm", pd.Series([30.53, 27.5, 29.0]))
 
-    # Alinha os comprimentos das séries para a subtração correta ponto a ponto
     min_l_m = min(len(sr_g), len(sr_a))
     sr_g_sub = sr_g.iloc[:min_l_m].reset_index(drop=True)
     sr_a_sub = sr_a.iloc[:min_l_m].reset_index(drop=True)
@@ -610,7 +823,6 @@ with tab3:
     st_g_sub = st_g.iloc[:min_l_m].reset_index(drop=True)
     st_a_sub = st_a.iloc[:min_l_m].reset_index(drop=True)
 
-    # Fórmula solicitada: [(Aba 1 - Aba 2) / qtd_total_apts] * qtd_unid_caixa
     fator_proporcao = (qtd_unid_caixa / qtd_total_apts) if qtd_total_apts > 0 else 0
 
     serie_r_med = (sr_g_sub - sr_a_sub).clip(lower=0) * fator_proporcao
@@ -784,7 +996,7 @@ with tab4:
             [f"{g.get('p_apar_total',0)/1000:.2f} kVA", f"{a.get('p_apar_total',0)/1000:.2f} kVA", f"{m.get('p_apar_total',0)/1000:.2f} kVA"],
             [f"{g.get('p_disp_prot_total',0)/1000:.2f} kVA", f"{a.get('p_disp_prot_total',0)/1000:.2f} kVA", f"{m.get('p_disp_prot_total',0)/1000:.2f} kVA"],
             [f"{g.get('p_disp_cond_total',0)/1000:.2f} kVA", f"{a.get('p_disp_cond_total',0)/1000:.2f} kVA", f"{m.get('p_disp_cond_total',0)/1000:.2f} kVA"],
-            [f"{p_disp_entrada_kva:.2f} kVA", f"{p_disp_adm_kva:.2f} kVA", f"{p_disp_med_kva:.2f} kVA"]
+            [f"{p_disp_entrada_kva:.2f} kW", f"{p_disp_adm_kva:.2f} kW", f"{p_disp_med_kva:.2f} kW"]
         ]
 
         fig_comp = go.Figure(data=[go.Table(
@@ -817,7 +1029,7 @@ with tab4:
             qtd_adm_9k = int(p_disp_adm_kva // 1.0) if p_disp_adm_kva > 0 else 0
             qtd_adm_12k = int(p_disp_adm_kva // 1.2) if p_disp_adm_kva > 0 else 0
             qtd_adm_18k = int(p_disp_adm_kva // 1.6) if p_disp_adm_kva > 0 else 0
-            paragrafo_adm = f"De forma similar, o quadro administrativo apresenta uma potência disponível de aproximadamente {fmt(p_disp_adm_kva)} kVA. Sugere-se, pelos mesmos critérios de segurança operacional, limitar o uso a até 80% dessa capacidade ({fmt(p_disp_adm_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema. Portanto, o quadro administrativo suporta a adição de {qtd_adm_9k} máquinas de ar-condicionado de 9.000 BTU/h, {qtd_adm_12k} máquinas de 12.000 BTU/h e {qtd_adm_18k} máquinas de 18.000 BTU/h."
+            paragrafo_adm = f"De forma similar, o quadro administrativo apresenta uma potência disponível de aproximadamente {fmt(p_disp_adm_kva)} kVA. Sugere-se, pelos mesmos critérios de segurança operacional, limitar o uso a até 80% dessa capacidade ({fmt(p_disp_adm_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema. Portanto, a entrada de energia suporta a adição de {qtd_adm_9k} máquinas de ar-condicionado de 9.000 BTU/h, {qtd_adm_12k} máquinas de 12.000 BTU/h e {qtd_adm_18k} máquinas de 18.000 BTU/h."
         else:
             qtd_adm_74 = int(p_disp_adm_kva // 7.4) if p_disp_adm_kva > 0 else 0
             qtd_adm_37 = int(p_disp_adm_kva // 3.7) if p_disp_adm_kva > 0 else 0
@@ -828,21 +1040,21 @@ with tab4:
             qtd_med_9k = int(p_disp_med_kva // 1.0) if p_disp_med_kva > 0 else 0
             qtd_med_12k = int(p_disp_med_kva // 1.2) if p_disp_med_kva > 0 else 0
             qtd_med_18k = int(p_disp_med_kva // 1.6) if p_disp_med_kva > 0 else 0
-            paragrafo_med = f"Adicionalmente, as caixas de medidores apresentam uma potência disponível de aproximadamente {fmt(p_disp_med_kva)} kVA. Sugere-se, pelos mesmos critérios de segurança operacional, limitar o uso a até 80% dessa capacidade ({fmt(p_disp_med_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema. Portanto, as caixas de medidores suportam a adição de {qtd_med_9k} máquinas de ar-condicionado de 9.000 BTU/h, {qtd_med_12k} máquinas de 12.000 BTU/h e {qtd_med_18k} máquinas de 18.000 BTU/h."
+            paragrafo_med = f"Adicionalmente, a caixa de medidores apresenta uma potência disponível de aproximadamente {fmt(p_disp_med_kva)} kVA. Sugere-se, pelos mesmos critérios de segurança operacional, limitar o uso a até 80% dessa capacidade ({fmt(p_disp_med_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema. Portanto, a entrada de energia suporta a adição de {qtd_med_9k} máquinas de ar-condicionado de 9.000 BTU/h, {qtd_med_12k} máquinas de 12.000 BTU/h e {qtd_med_18k} máquinas de 18.000 BTU/h."
         else:
             qtd_med_74 = int(p_disp_med_kva // 7.4) if p_disp_med_kva > 0 else 0
             qtd_med_37 = int(p_disp_med_kva // 3.7) if p_disp_med_kva > 0 else 0
-            paragrafo_med = f"Adicionalmente, as caixas de medidores apresentam uma potência disponível de aproximadamente {fmt(p_disp_med_kva)} kVA. Sugere-se, pelos mesmos critérios de segurança operacional, limitar o uso a até 80% dessa capacidade ({fmt(p_disp_med_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema. Se o sistema de gerenciamento de carga for desconsiderado, o condomínio tem a possibilidade de instalar {qtd_med_74} carregadores veiculares de 7400W, ou alternativamente, {qtd_med_37} carregadores de 3700W nas caixas de medidores."
+            paragrafo_med = f"Adicionalmente, a caixa de medidores apresenta uma potência disponível de aproximadamente {fmt(p_disp_med_kva)} kVA. Sugere-se, pelos mesmos critérios de segurança operacional, limitar o uso a até 80% dessa capacidade ({fmt(p_disp_med_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema. Se o sistema de gerenciamento de carga for desconsiderado, o condomínio tem a possibilidade de instalar {qtd_med_74} carregadores veiculares de 7400W, ou alternativamente, {qtd_med_37} carregadores de 3700W na caixa de medidores."
 
         texto_laudo = f"{paragrafo_geral}\n\n{paragrafo_adm}\n\n{paragrafo_med}"
 
         st.success(texto_laudo)
         st.code(texto_laudo, language="text")
 
-        # --- SEÇÃO: SALVAR/ATUALIZAR RELATÓRIO ---
+        # --- SEÇÃO: SALVAR/ATUALIZAR RELATÓRIO NO DB ---
         st.markdown("---")
         st.subheader("💾 Salvar Relatório Atual")
-        st.info("Salve o progresso atual para consultá-lo depois. Se mantiver o mesmo nome, o relatório será atualizado com os novos dados.")
+        st.info("Salve o progresso atual vinculado à sua conta. Se mantiver o mesmo nome, o relatório será atualizado.")
         
         col_save1, col_save2 = st.columns([3, 1])
         with col_save1:
@@ -851,7 +1063,6 @@ with tab4:
         
         with col_save2:
             st.markdown("<br>", unsafe_allow_html=True)
-            
             is_updating = (nome_atual != "" and nome_atual == nome_novo_relatorio)
             texto_botao = "Atualizar Relatório" if is_updating else "Salvar Relatório"
             cor_botao = "primary" if is_updating else "secondary"
@@ -861,18 +1072,16 @@ with tab4:
                     st.warning("⚠️ Digite um nome para o relatório antes de salvar.")
                 else:
                     estado_salvo = {}
+                    keys_to_skip = ["logged_in", "username", "is_admin", "reset_key", "selectbox_historico"]
                     for chave, valor in st.session_state.items():
-                        if chave not in ["saved_reports", "reset_key", "current_report_name", "selectbox_historico"] and not chave.startswith("FormSubmitter") and not chave.startswith("file_geral") and not chave.startswith("file_adm") and not chave.startswith("btn_"):
+                        if chave not in keys_to_skip and not chave.startswith("FormSubmitter") and not chave.startswith("file_") and not chave.startswith("btn_") and not chave.startswith("adm_"):
                             estado_salvo[chave] = copy.deepcopy(valor)
                     
-                    st.session_state["saved_reports"][nome_novo_relatorio] = estado_salvo
-                    st.session_state["current_report_name"] = nome_novo_relatorio
-                    
-                    salvar_dados_arquivo(st.session_state["saved_reports"])
-                    
-                    if is_updating:
-                        st.toast(f"Relatório '{nome_novo_relatorio}' atualizado com sucesso!", icon="🔄")
-                    else:
-                        st.toast(f"Relatório '{nome_novo_relatorio}' salvo permanentemente!", icon="✅")
-                        
-                    st.rerun()
+                    sucesso = salvar_relatorio_db(st.session_state["username"], nome_novo_relatorio, estado_salvo)
+                    if sucesso:
+                        st.session_state["current_report_name"] = nome_novo_relatorio
+                        if is_updating:
+                            st.toast(f"Relatório '{nome_novo_relatorio}' atualizado com sucesso!", icon="🔄")
+                        else:
+                            st.toast(f"Relatório '{nome_novo_relatorio}' salvo na sua conta!", icon="✅")
+                        st.rerun()
