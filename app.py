@@ -11,11 +11,18 @@ import os
 st.set_page_config(page_title="Estudo de Demanda - Veículos Elétricos & Ar Condicionado", page_icon="⚡", layout="wide")
 
 # =====================================================================
-# CONFIGURAÇÃO DE EXPORTAÇÃO AJUSTADA (Sem cortes na tabela)
+# CONFIGURAÇÃO DE EXPORTAÇÃO AJUSTADA (Sem cortes e sem bordas extras)
 # =====================================================================
 CONFIG_IMG_TABELA = {
     "toImageButtonOptions": {
         "format": "png", "width": 1400, "height": 380, "scale": 3
+    },
+    "displayModeBar": True
+}
+# Configuração específica para a tabela comparativa (3 colunas, menor quantidade de linhas)
+CONFIG_IMG_TABELA_COMP = {
+    "toImageButtonOptions": {
+        "format": "png", "width": 1400, "height": 230, "scale": 3
     },
     "displayModeBar": True
 }
@@ -922,25 +929,29 @@ with tab4:
 
         st.subheader("📊 Quadro Geral Comparativo")
         
-        h_comp = ["<b>SETOR ANALISADO</b>", "<b>P. APARENTE (kVA)</b>", "<b>P. DISP. PROTEÇÃO</b>", "<b>P. DISP. CABOS</b>", "<b>P. DISP. REAL (kW)</b>"]
+        # TABELA AJUSTADA: APENAS 3 COLUNAS E NOME DA ÚLTIMA POR EXTENSO
+        h_comp = [
+            "<b>SETOR ANALISADO</b>", 
+            "<b>P. APARENTE (kVA)</b>", 
+            "<b>POTÊNCIA DISPONÍVEL NO SISTEMA (kW)</b>"
+        ]
         v_comp = [
             ["Entrada de Energia (Geral)", "Quadro Administrativo (ADM)", "Caixa de Medidores"],
             [f"{g.get('p_apar_total',0)/1000:.1f} kVA", f"{a.get('p_apar_total',0)/1000:.1f} kVA", f"{m.get('p_apar_total',0)/1000:.1f} kVA"],
-            [f"{g.get('p_disp_prot_total',0)/1000:.1f} kVA", f"{a.get('p_disp_prot_total',0)/1000:.1f} kVA", f"{m.get('p_disp_prot_total',0)/1000:.1f} kVA"],
-            [f"{g.get('p_disp_cond_total',0)/1000:.1f} kVA", f"{a.get('p_disp_cond_total',0)/1000:.1f} kVA", f"{m.get('p_disp_cond_total',0)/1000:.1f} kVA"],
             [f"{p_disp_entrada_kva:.1f} kW", f"{p_disp_adm_kva:.1f} kW", f"{p_disp_med_kva:.1f} kW"]
         ]
 
         fig_comp = go.Figure(data=[go.Table(
-            columnwidth=[2, 1.5, 1.5, 1.5, 1.5],
-            header=dict(values=h_comp, fill_color='#1E3A8A', align='center', font=dict(color='white', size=21, family="Arial Black")),
-            cells=dict(values=v_comp, fill_color=[['#F3F4F6', '#ffffff']*2], align='center', font=dict(color='#000000', size=19, family="Arial"), height=37)
+            columnwidth=[2.5, 1.8, 3.5],
+            header=dict(values=h_comp, fill_color='#1E3A8A', align='center', font=dict(color='white', size=21, family="Arial Black"), line=dict(width=0)),
+            cells=dict(values=v_comp, fill_color=[['#F3F4F6', '#ffffff', '#F3F4F6']], align='center', font=dict(color='#000000', size=19, family="Arial"), height=37, line=dict(width=0))
         )])
+        
         fig_comp.update_layout(
             title=dict(text="<b>Quadro Geral Comparativo</b>", font=dict(size=24, color='#000000')),
-            margin=dict(l=5, r=5, t=55, b=5), height=250
+            margin=dict(l=5, r=5, t=55, b=0), height=220
         )
-        st.plotly_chart(fig_comp, use_container_width=True, config=CONFIG_IMG_TABELA)
+        st.plotly_chart(fig_comp, use_container_width=True, config=CONFIG_IMG_TABELA_COMP)
 
         st.markdown("---")
         st.subheader("📄 Texto Oficial do Laudo Técnico (Passe o mouse no canto superior direito para COPIAR)")
