@@ -68,6 +68,7 @@ TABELA_CABOS = {
 
 INDEX_PADRAO = list(TABELA_CABOS.keys()).index("35 mm² - 1kV")
 
+# SISTEMA DE BANCO DE DADOS LOCAL (ARQUIVO PICKLE)
 ARQUIVO_BANDO_DADOS = "banco_relatorios.pkl"
 
 def carregar_dados():
@@ -95,44 +96,27 @@ def update_cap_adm():
         st.session_state['a_cap'] = float(TABELA_CABOS[st.session_state['a_bitola']])
 
 # --- INICIALIZAÇÃO DE VARIÁVEIS NA MEMÓRIA ---
-if "saved_reports" not in st.session_state: st.session_state["saved_reports"] = carregar_dados()
-if "current_report_name" not in st.session_state: st.session_state["current_report_name"] = ""
+if "saved_reports" not in st.session_state: st.session_state["saved_reports"] = carregar_dados() # Carrega os dados definitivos no início
 if "dados_geral" not in st.session_state: st.session_state["dados_geral"] = {}
 if "dados_adm" not in st.session_state: st.session_state["dados_adm"] = {}
 if "reset_key" not in st.session_state: st.session_state["reset_key"] = 0
 if "arquivos_data" not in st.session_state: st.session_state["arquivos_data"] = {}
-if "pending_load_report" not in st.session_state: st.session_state["pending_load_report"] = None
 
-# Se houver um relatório pendente para carregar, executamos a limpeza completa e o carregamento seguro
-if st.session_state["pending_load_report"] is not None:
-    nome_a_carregar = st.session_state["pending_load_report"]
-    st.session_state["pending_load_report"] = None
-    
-    if nome_a_carregar in st.session_state["saved_reports"]:
-        report_data = st.session_state["saved_reports"][nome_a_carregar]
-        
-        # Limpa todos os widgets da sessão para evitar conflitos
-        for k in list(st.session_state.keys()):
-            if k not in ["saved_reports", "reset_key", "current_report_name", "pending_load_report"]:
-                del st.session_state[k]
-        
-        # Restaura os dados salvos
-        for k, v in report_data.items():
-            st.session_state[k] = copy.deepcopy(v)
-            
-        st.session_state["current_report_name"] = nome_a_carregar
-        st.session_state["reset_key"] += 1
-        st.rerun()
-
+# Função para resetar e iniciar um novo relatório
 def reset_app():
     st.session_state["reset_key"] += 1
-    keys_to_delete = [k for k in st.session_state.keys() if k not in ["saved_reports", "reset_key", "current_report_name", "pending_load_report"]]
+    keys_to_delete = [k for k in st.session_state.keys() if k not in ["saved_reports", "reset_key"]]
     for k in keys_to_delete:
         del st.session_state[k]
     st.session_state["dados_geral"] = {}
     st.session_state["dados_adm"] = {}
     st.session_state["arquivos_data"] = {}
-    st.session_state["current_report_name"] = ""
+
+# Função para carregar um relatório salvo
+def load_report(nome):
+    report_data = st.session_state["saved_reports"][nome]
+    for k, v in report_data.items():
+        st.session_state[k] = copy.deepcopy(v)
 
 # --- BARRA LATERAL (MENU DE RELATÓRIOS) ---
 st.sidebar.markdown("### 💾 Gerenciador de Relatórios")
@@ -148,22 +132,22 @@ if not st.session_state["saved_reports"]:
     st.sidebar.info("Nenhum relatório salvo no momento.")
 else:
     for rep_name in list(st.session_state["saved_reports"].keys()):
+        # Divide o espaço na barra lateral: maior para o nome, menor para lixeira
         col_name, col_del = st.sidebar.columns([4, 1])
         
         with col_name:
-            # Botão sem key customizada na barra lateral para evitar completamente o erro de atribuição de valor
-            if st.sidebar.button(f"📄 {rep_name}", use_container_width=True):
-                st.session_state["pending_load_report"] = rep_name
+            if st.button(f"📄 {rep_name}", use_container_width=True, key=f"load_{rep_name}"):
+                load_report(rep_name)
                 st.rerun()
                 
         with col_del:
-            if st.sidebar.button("🗑️", key=f"del_{rep_name}", help=f"Excluir '{rep_name}'"):
+            # Botão de excluir
+            if st.button("🗑️", key=f"del_{rep_name}", help=f"Excluir '{rep_name}'"):
                 del st.session_state["saved_reports"][rep_name]
-                salvar_dados_arquivo(st.session_state["saved_reports"])
-                if st.session_state["current_report_name"] == rep_name:
-                    st.session_state["current_report_name"] = ""
+                salvar_dados_arquivo(st.session_state["saved_reports"]) # Atualiza o arquivo físico
                 st.toast(f"Relatório apagado!", icon="🗑️")
                 st.rerun()
+
 
 # Extração de Dados
 def extrair_dados_completos(df):
@@ -188,19 +172,25 @@ tab1, tab2, tab3 = st.tabs(["🔌 1. Entrada de Energia (Geral)", "🏢 2. Quadr
 with tab1:
     st.header("🔌 1. Entrada de Energia (Geral)")
     
-    tipo_analise = st.selectbox("Selecione o tipo de análise:", ["Veículos Elétricos (VE)", "Ar Condicionado (AC)"], key="g_tipo_analise")
+    tipo_analise = st.selectbox(
+        "Selecione o tipo de análise:",
+        ["Veículos Elétricos (VE)", "Ar Condicionado (AC)"],
+        key="g_tipo_analise"
+    )
     sigla_tipo = "VE" if "Veículos" in tipo_analise else "AC"
 
     file_geral = st.file_uploader("📂 Arraste e solte o arquivo Excel (.xlsx) ou CSV do Analisador de Energia:", type=["xlsx", "csv"], key=f"file_geral_{st.session_state['reset_key']}")
     
+    # Dados Base Iniciais
     serie_r_base, serie_s_base, serie_t_base = pd.Series([25.0, 30.2, 31.29, 28.4, 26.1]), pd.Series([4.5, 5.2, 5.81, 5.0, 4.8]), pd.Series([26.0, 31.0, 32.16, 29.5, 27.0])
 
+    # Puxa da memória se os dados do excel já estiverem salvos
     if "g_serie_r" in st.session_state["arquivos_data"]:
         serie_r_base = st.session_state["arquivos_data"]["g_serie_r"]
         serie_s_base = st.session_state["arquivos_data"]["g_serie_s"]
         serie_t_base = st.session_state["arquivos_data"]["g_serie_t"]
         if file_geral is None:
-            st.info("ℹ️ Dados do Excel geral recuperados do relatório salvo.")
+            st.info("ℹ️ Dados do Excel recuperados do relatório salvo.")
 
     if file_geral is not None:
         try:
@@ -217,8 +207,10 @@ with tab1:
 
     col1, col2 = st.columns(2)
     
-    if "g_bitola" not in st.session_state: st.session_state["g_bitola"] = list(TABELA_CABOS.keys())[INDEX_PADRAO]
-    if "g_cap" not in st.session_state: st.session_state["g_cap"] = float(TABELA_CABOS[st.session_state["g_bitola"]])
+    if "g_bitola" not in st.session_state:
+        st.session_state["g_bitola"] = list(TABELA_CABOS.keys())[INDEX_PADRAO]
+    if "g_cap" not in st.session_state:
+        st.session_state["g_cap"] = float(TABELA_CABOS[st.session_state["g_bitola"]])
 
     with col1:
         num_cabos = st.number_input("Número de cabos por fase:", min_value=1, value=3, step=1, key="g_cabos")
@@ -389,7 +381,7 @@ with tab2:
         serie_s_base_a = st.session_state["arquivos_data"]["a_serie_s"]
         serie_t_base_a = st.session_state["arquivos_data"]["a_serie_t"]
         if file_adm is None:
-            st.info("ℹ️ Dados do Excel ADM recuperados do relatório salvo.")
+            st.info("ℹ️ Dados do Excel recuperados do relatório salvo.")
 
     if file_adm is not None:
         try:
@@ -604,6 +596,7 @@ with tab3:
         st.markdown("---")
         st.subheader("📄 Texto Oficial do Laudo Técnico (Passe o mouse no canto superior direito para COPIAR)")
 
+        # Cálculos dos 80% de limite de segurança
         p_disp_entrada_80 = p_disp_entrada_kva * 0.8
         p_disp_adm_80 = p_disp_adm_kva * 0.8
 
@@ -614,40 +607,30 @@ De forma similar, o quadro administrativo apresenta uma potência disponível de
         st.success(texto_laudo)
         st.code(texto_laudo, language="text")
 
-        # --- NOVA SEÇÃO: SALVAR/ATUALIZAR RELATÓRIO ---
+        # --- NOVA SEÇÃO: SALVAR RELATÓRIO ---
         st.markdown("---")
         st.subheader("💾 Salvar Relatório Atual")
-        st.info("Salve o progresso atual para consultá-lo depois. Se mantiver o mesmo nome, o relatório será atualizado com os novos dados.")
+        st.info("Salve o progresso atual para consultá-lo depois usando o menu lateral esquerdo.")
         
         col_save1, col_save2 = st.columns([3, 1])
         with col_save1:
-            nome_atual = st.session_state.get("current_report_name", "")
-            nome_novo_relatorio = st.text_input("Nome do relatório (Ex: Condomínio XYZ - Bloco A):", value=nome_atual)
-        
+            nome_novo_relatorio = st.text_input("Dê um nome para este relatório (Ex: Condomínio XYZ - Bloco A):")
         with col_save2:
             st.markdown("<br>", unsafe_allow_html=True)
-            
-            is_updating = (nome_atual != "" and nome_atual == nome_novo_relatorio)
-            texto_botao = "Atualizar Relatório" if is_updating else "Salvar Relatório"
-            cor_botao = "primary" if is_updating else "secondary"
-
-            if st.button(texto_botao, use_container_width=True, type=cor_botao):
+            if st.button("Salvar Relatório", use_container_width=True):
                 if not nome_novo_relatorio:
                     st.warning("⚠️ Digite um nome para o relatório antes de salvar.")
                 else:
+                    # Varre a memória e cria uma cópia profunda ignorando caixas de arquivos (incompatíveis com banco permanente)
                     estado_salvo = {}
                     for chave, valor in st.session_state.items():
-                        if chave not in ["saved_reports", "reset_key", "current_report_name", "pending_load_report"] and not chave.startswith("FormSubmitter") and not chave.startswith("file_geral") and not chave.startswith("file_adm"):
+                        if chave not in ["saved_reports", "reset_key"] and not chave.startswith("FormSubmitter") and not chave.startswith("file_geral") and not chave.startswith("file_adm"):
                             estado_salvo[chave] = copy.deepcopy(valor)
                     
                     st.session_state["saved_reports"][nome_novo_relatorio] = estado_salvo
-                    st.session_state["current_report_name"] = nome_novo_relatorio
                     
+                    # Salva no arquivo local oculto para resistir ao F5
                     salvar_dados_arquivo(st.session_state["saved_reports"])
                     
-                    if is_updating:
-                        st.toast(f"Relatório '{nome_novo_relatorio}' atualizado com sucesso!", icon="🔄")
-                    else:
-                        st.toast(f"Relatório '{nome_novo_relatorio}' salvo permanentemente!", icon="✅")
-                        
+                    st.toast(f"Relatório '{nome_novo_relatorio}' salvo permanentemente!", icon="✅")
                     st.rerun()
