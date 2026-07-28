@@ -838,7 +838,8 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
         "bitola": bitola_med, "i_cap_cabo": i_cond_total_m, "i_protecao": i_prot_total_m,
         "pct_condutor": (i_max_pico_proj_m / i_cond_total_m) * 100 if i_cond_total_m > 0 else 0,
         "pct_dispositivo": (i_max_pico_proj_m / i_prot_total_m) * 100 if i_prot_total_m > 0 else 0,
-        "disp_restante": i_prot_total_m - i_max_pico_proj_m, "sigla_tipo": sigla_m
+        "disp_restante": i_prot_total_m - i_max_pico_proj_m, "sigla_tipo": sigla_m,
+        "qtd_unid_caixa": qtd_unid_caixa
     }
 
     stat_r_m = "⚠️ ACIMA" if i_pico_r_proj_m > i_prot_total_m or i_pico_r_proj_m > i_cond_total_m else "✅ OK"
@@ -926,10 +927,11 @@ with tab4:
         sigla_geral = g.get("sigla_tipo", "VE")
         sigla_adm = a.get("sigla_tipo", "VE")
         sigla_med = m.get("sigla_tipo", "VE")
+        x_medidores = m.get("qtd_unid_caixa", 6)
 
         st.subheader("📊 Quadro Geral Comparativo")
         
-        # TABELA AJUSTADA: APENAS 3 COLUNAS E NOME DA ÚLTIMA POR EXTENSO
+        # TABELA DE 3 COLUNAS
         h_comp = [
             "<b>SETOR ANALISADO</b>", 
             "<b>P. APARENTE (kVA)</b>", 
@@ -982,16 +984,16 @@ with tab4:
             qtd_adm_37 = int(p_disp_adm_kva // 3.7) if p_disp_adm_kva > 0 else 0
             paragrafo_adm = f"De forma similar, o quadro administrativo apresenta uma potência disponível de aproximadamente {fmt(p_disp_adm_kva)} kVA. Sugere-se, pelos mesmos critérios de segurança operacional, limitar o uso a até 80% dessa capacidade ({fmt(p_disp_adm_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema. Se o sistema de gerenciamento de carga for desconsiderado, o condomínio tem a possibilidade de instalar {qtd_adm_74} carregadores veiculares de 7400W, ou alternativamente, {qtd_adm_37} carregadores de 3700W no quadro administrativo."
 
-        # --- PARÁGRAFO 3: CAIXA DE MEDIDORES ---
+        # --- PARÁGRAFO 3: CAIXA DE MEDIDORES (ATUALIZADO) ---
         if sigla_med == "AC":
             qtd_med_9k = int(p_disp_med_kva // 1.0) if p_disp_med_kva > 0 else 0
             qtd_med_12k = int(p_disp_med_kva // 1.2) if p_disp_med_kva > 0 else 0
             qtd_med_18k = int(p_disp_med_kva // 1.6) if p_disp_med_kva > 0 else 0
-            paragrafo_med = f"Adicionalmente, a caixa de medidores apresenta uma potência disponível de aproximadamente {fmt(p_disp_med_kva)} kVA. Sugere-se, pelos mesmos critérios de segurança operacional, limitar o uso a até 80% dessa capacidade ({fmt(p_disp_med_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema. Portanto, a entrada de energia suporta a adição de {qtd_med_9k} máquinas de ar-condicionado de 9.000 BTU/h, {qtd_med_12k} máquinas de 12.000 BTU/h e {qtd_med_18k} máquinas de 18.000 BTU/h."
+            paragrafo_med = f"Adicionalmente, as caixas com {int(x_medidores)} medidores apresentam uma potência disponível de aproximadamente {fmt(p_disp_med_kva)} kVA, isso indica que a potência disponível permite a utilização simultânea de {qtd_med_9k} máquinas de ar-condicionado de 9.000 BTU/h, {qtd_med_12k} máquinas de 12.000 BTU/h e {qtd_med_18k} máquinas de 18.000 BTU/h na caixas de medidores."
         else:
             qtd_med_74 = int(p_disp_med_kva // 7.4) if p_disp_med_kva > 0 else 0
             qtd_med_37 = int(p_disp_med_kva // 3.7) if p_disp_med_kva > 0 else 0
-            paragrafo_med = f"Adicionalmente, a caixa de medidores apresenta uma potência disponível de aproximadamente {fmt(p_disp_med_kva)} kVA. Sugere-se, pelos mesmos critérios de segurança operacional, limitar o uso a até 80% dessa capacidade ({fmt(p_disp_med_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema. Se o sistema de gerenciamento de carga for desconsiderado, o condomínio tem a possibilidade de instalar {qtd_med_74} carregadores veiculares de 7400W, ou alternativamente, {qtd_med_37} carregadores de 3700W na caixa de medidores."
+            paragrafo_med = f"Adicionalmente, as caixas com {int(x_medidores)} medidores apresentam uma potência disponível de aproximadamente {fmt(p_disp_med_kva)} kVA, isso indica que a potência disponível permite a utilização simultânea de {qtd_med_74} carregadores veiculares de 7400W, ou alternativamente, {qtd_med_37} carregadores de 3700W na caixas de medidores."
 
         texto_laudo = f"{paragrafo_geral}\n\n{paragrafo_adm}\n\n{paragrafo_med}"
 
