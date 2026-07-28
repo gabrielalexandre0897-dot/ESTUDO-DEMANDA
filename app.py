@@ -101,28 +101,38 @@ if "dados_geral" not in st.session_state: st.session_state["dados_geral"] = {}
 if "dados_adm" not in st.session_state: st.session_state["dados_adm"] = {}
 if "reset_key" not in st.session_state: st.session_state["reset_key"] = 0
 if "arquivos_data" not in st.session_state: st.session_state["arquivos_data"] = {}
+if "pending_load_report" not in st.session_state: st.session_state["pending_load_report"] = None
+
+# Se houver um relatório pendente para carregar, fazemos a limpeza e carga segura aqui no início
+if st.session_state["pending_load_report"] is not None:
+    nome_a_carregar = st.session_state["pending_load_report"]
+    st.session_state["pending_load_report"] = None
+    
+    if nome_a_carregar in st.session_state["saved_reports"]:
+        report_data = st.session_state["saved_reports"][nome_a_carregar]
+        
+        # Remove todos os widgets antigos para zerar o estado do Streamlit
+        for k in list(st.session_state.keys()):
+            if k not in ["saved_reports", "reset_key", "current_report_name", "pending_load_report"]:
+                del st.session_state[k]
+        
+        # Carrega os dados salvos
+        for k, v in report_data.items():
+            st.session_state[k] = copy.deepcopy(v)
+            
+        st.session_state["current_report_name"] = nome_a_carregar
+        st.session_state["reset_key"] += 1
+        st.rerun()
 
 def reset_app():
     st.session_state["reset_key"] += 1
-    keys_to_delete = [k for k in st.session_state.keys() if k not in ["saved_reports", "reset_key", "current_report_name"]]
+    keys_to_delete = [k for k in st.session_state.keys() if k not in ["saved_reports", "reset_key", "current_report_name", "pending_load_report"]]
     for k in keys_to_delete:
         del st.session_state[k]
     st.session_state["dados_geral"] = {}
     st.session_state["dados_adm"] = {}
     st.session_state["arquivos_data"] = {}
     st.session_state["current_report_name"] = ""
-
-# Função de callback segura para carregar o relatório sem conflitos de widgets
-def load_report_callback(nome):
-    report_data = st.session_state["saved_reports"][nome]
-    # Limpa widgets anteriores do session_state
-    for k in list(st.session_state.keys()):
-        if k not in ["saved_reports", "reset_key", "current_report_name"]:
-            del st.session_state[k]
-    
-    for k, v in report_data.items():
-        st.session_state[k] = copy.deepcopy(v)
-    st.session_state["current_report_name"] = nome
 
 # --- BARRA LATERAL (MENU DE RELATÓRIOS) ---
 st.sidebar.markdown("### 💾 Gerenciador de Relatórios")
@@ -141,14 +151,10 @@ else:
         col_name, col_del = st.sidebar.columns([4, 1])
         
         with col_name:
-            # Uso seguro de on_click para evitar o conflito de valores do Streamlit
-            st.sidebar.button(
-                f"📄 {rep_name}", 
-                use_container_width=True, 
-                key=f"load_{rep_name}",
-                on_click=load_report_callback,
-                args=(rep_name,)
-            )
+            if st.sidebar.button(f"📄 {rep_name}", use_container_width=True, key=f"load_{rep_name}"):
+                # Define a bandeira e força o recarregamento na próxima execução
+                st.session_state["pending_load_report"] = rep_name
+                st.rerun()
                 
         with col_del:
             if st.sidebar.button("🗑️", key=f"del_{rep_name}", help=f"Excluir '{rep_name}'"):
@@ -631,7 +637,7 @@ De forma similar, o quadro administrativo apresenta uma potência disponível de
                 else:
                     estado_salvo = {}
                     for chave, valor in st.session_state.items():
-                        if chave not in ["saved_reports", "reset_key", "current_report_name"] and not chave.startswith("FormSubmitter") and not chave.startswith("file_geral") and not chave.startswith("file_adm"):
+                        if chave not in ["saved_reports", "reset_key", "current_report_name", "pending_load_report"] and not chave.startswith("FormSubmitter") and not chave.startswith("file_geral") and not chave.startswith("file_adm"):
                             estado_salvo[chave] = copy.deepcopy(valor)
                     
                     st.session_state["saved_reports"][nome_novo_relatorio] = estado_salvo
