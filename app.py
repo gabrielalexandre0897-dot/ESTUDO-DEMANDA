@@ -89,11 +89,16 @@ def update_cap_adm():
     if st.session_state.get('a_bitola') in TABELA_CABOS:
         st.session_state['a_cap'] = float(TABELA_CABOS[st.session_state['a_bitola']])
 
+def update_cap_med():
+    if st.session_state.get('m_bitola') in TABELA_CABOS:
+        st.session_state['m_cap'] = float(TABELA_CABOS[st.session_state['m_bitola']])
+
 # --- INICIALIZAÇÃO DE VARIÁVEIS NA MEMÓRIA ---
 if "saved_reports" not in st.session_state: st.session_state["saved_reports"] = carregar_dados()
 if "current_report_name" not in st.session_state: st.session_state["current_report_name"] = ""
 if "dados_geral" not in st.session_state: st.session_state["dados_geral"] = {}
 if "dados_adm" not in st.session_state: st.session_state["dados_adm"] = {}
+if "dados_med" not in st.session_state: st.session_state["dados_med"] = {}
 if "reset_key" not in st.session_state: st.session_state["reset_key"] = 0
 if "arquivos_data" not in st.session_state: st.session_state["arquivos_data"] = {}
 
@@ -104,6 +109,7 @@ def reset_app():
         del st.session_state[k]
     st.session_state["dados_geral"] = {}
     st.session_state["dados_adm"] = {}
+    st.session_state["dados_med"] = {}
     st.session_state["arquivos_data"] = {}
     st.session_state["current_report_name"] = ""
 
@@ -169,8 +175,14 @@ def extrair_dados_completos(df):
         pass
     return None, None, None
 
-tab1, tab2, tab3 = st.tabs(["🔌 1. Entrada de Energia (Geral)", "🏢 2. Quadro Administrativo (ADM)", "📝 3. Conclusão & Laudo Técnico"])
+tab1, tab2, tab3, tab4 = st.tabs([
+    "🔌 1. Entrada de Energia (Geral)", 
+    "🏢 2. Quadro Administrativo (ADM)", 
+    "⚡ 3. Caixa de Medidores", 
+    "📝 4. Conclusão & Laudo Técnico"
+])
 
+# --- ABA 1 ---
 with tab1:
     st.header("🔌 1. Entrada de Energia (Geral)")
     
@@ -292,6 +304,11 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
     p_apar_r, p_apar_s, p_apar_t = i_pico_r * tensao_fase, i_pico_s * tensao_fase, i_pico_t * tensao_fase
     p_apar_total = p_apar_r + p_apar_s + p_apar_t
 
+    # Salvando as séries brutas e processadas no session_state para uso posterior na Aba 3
+    st.session_state["serie_r_geral"] = r_base_total_serie
+    st.session_state["serie_s_geral"] = s_base_total_serie
+    st.session_state["serie_t_geral"] = t_base_total_serie
+
     st.session_state["dados_geral"] = {
         "i_pico_max": i_max_pico, "p_apar_total": p_apar_total,
         "p_disp_prot_total": p_disp_prot_total, "p_disp_cond_total": p_disp_cond_total,
@@ -360,6 +377,7 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
     st.markdown("📋 **Resumo da Simulação (Pronto para Cópia):**")
     st.code(texto_resumo_cliente, language="text")
 
+# --- ABA 2 ---
 with tab2:
     st.header("🏢 2. Quadro Administrativo (ADM)")
     
@@ -477,6 +495,11 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
     p_apar_r_a, p_apar_s_a, p_apar_t_a = i_pico_r_a * tensao_fase_adm, i_pico_s_a * tensao_fase_adm, i_pico_t_a * tensao_fase_adm
     p_apar_total_a = p_apar_r_a + p_apar_s_a + p_apar_t_a
 
+    # Salvando as séries brutas e processadas no session_state para uso posterior na Aba 3
+    st.session_state["serie_r_adm"] = r_base_total_serie_a
+    st.session_state["serie_s_adm"] = s_base_total_serie_a
+    st.session_state["serie_t_adm"] = t_base_total_serie_a
+
     st.session_state["dados_adm"] = {
         "i_pico_max": i_max_pico_a, "p_apar_total": p_apar_total_a,
         "p_disp_prot_total": p_disp_prot_total_a, "p_disp_cond_total": p_disp_cond_total_a,
@@ -545,12 +568,202 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
     st.markdown("📋 **Resumo da Simulação (Pronto para Cópia):**")
     st.code(texto_resumo_cliente_a, language="text")
 
-
+# --- ABA 3: CAIXA DE MEDIDORES ---
 with tab3:
-    st.header("📝 3. Quadro Comparativo & Laudo Técnico")
+    st.header("⚡ 3. Caixa de Medidores")
+    
+    tipo_analise_med = st.selectbox("Selecione o tipo de análise:", ["Veículos Elétricos (VE)", "Ar Condicionado (AC)"], key="m_tipo_analise")
+    sigla_tipo_med = "VE" if "Veículos" in tipo_analise_med else "AC"
+
+    col_m1, col_m2 = st.columns(2)
+    with col_m1:
+        qtd_total_apts = st.number_input("Quantidade total de unidades do condomínio:", min_value=1, value=50, step=1, key="m_qtd_apt")
+    with col_m2:
+        qtd_unid_caixa = st.number_input("Quantidade de unidades na caixa de medidores:", min_value=1, value=6, step=1, key="m_qtd_caixa")
+
+    col1, col2 = st.columns(2)
+    if "m_bitola" not in st.session_state: st.session_state["m_bitola"] = list(TABELA_CABOS.keys())[INDEX_PADRAO]
+    if "m_cap" not in st.session_state: st.session_state["m_cap"] = float(TABELA_CABOS[st.session_state["m_bitola"]])
+
+    with col1:
+        num_cabos_med = st.number_input("Número de cabos por fase:", min_value=1, value=1, step=1, key="m_cabos")
+        bitola_med = st.selectbox("Bitola do Condutor (Caixa de Medidores):", list(TABELA_CABOS.keys()), key="m_bitola", on_change=update_cap_med)
+        i_capacidade_cabo_med = st.number_input("Capacidade do cabo por fase (A):", key="m_cap", step=1.0)
+        i_protecao_med = st.number_input("Corrente do Dispositivo de Proteção por fase (A):", value=100.0, key="m_prot")
+        tensao_fase_med = st.number_input("Tensão de Fase (V):", value=127.0, key="m_v")
+
+    # Recupera as séries da Aba 1 e Aba 2 se existirem no session_state, senão usa padrão de demonstração
+    sr_g = st.session_state.get("serie_r_geral", pd.Series([25.0, 30.2, 31.29, 28.4, 26.1]))
+    ss_g = st.session_state.get("serie_s_geral", pd.Series([4.5, 5.2, 5.81, 5.0, 4.8]))
+    st_g = st.session_state.get("serie_t_geral", pd.Series([26.0, 31.0, 32.16, 29.5, 27.0]))
+
+    sr_a = st.session_state.get("serie_r_adm", pd.Series([31.46, 28.0, 29.5]))
+    ss_a = st.session_state.get("serie_s_adm", pd.Series([23.06, 21.0, 22.5]))
+    st_a = st.session_state.get("serie_t_adm", pd.Series([30.53, 27.5, 29.0]))
+
+    # Alinha os comprimentos das séries para a subtração correta ponto a ponto
+    min_l_m = min(len(sr_g), len(sr_a))
+    sr_g_sub = sr_g.iloc[:min_l_m].reset_index(drop=True)
+    sr_a_sub = sr_a.iloc[:min_l_m].reset_index(drop=True)
+    ss_g_sub = ss_g.iloc[:min_l_m].reset_index(drop=True)
+    ss_a_sub = ss_a.iloc[:min_l_m].reset_index(drop=True)
+    st_g_sub = st_g.iloc[:min_l_m].reset_index(drop=True)
+    st_a_sub = st_a.iloc[:min_l_m].reset_index(drop=True)
+
+    # Fórmula solicitada: [(Aba 1 - Aba 2) / qtd_total_apts] * qtd_unid_caixa
+    fator_proporcao = (qtd_unid_caixa / qtd_total_apts) if qtd_total_apts > 0 else 0
+
+    serie_r_med = (sr_g_sub - sr_a_sub).clip(lower=0) * fator_proporcao
+    serie_s_med = (ss_g_sub - ss_a_sub).clip(lower=0) * fator_proporcao
+    serie_t_med = (st_g_sub - st_a_sub).clip(lower=0) * fator_proporcao
+
+    ir_am_max_m = serie_r_med.max() if len(serie_r_med) > 0 else 0.0
+    is_am_max_m = serie_s_med.max() if len(serie_s_med) > 0 else 0.0
+    it_am_max_m = serie_t_med.max() if len(serie_t_med) > 0 else 0.0
+
+    i_pico_r_m = ir_am_max_m * num_cabos_med
+    i_pico_s_m = is_am_max_m * num_cabos_med
+    i_pico_t_m = it_am_max_m * num_cabos_med
+    i_max_pico_m = max(i_pico_r_m, i_pico_s_m, i_pico_t_m)
+
+    p_apar_r_m = i_pico_r_m * tensao_fase_med
+    p_apar_s_m = i_pico_s_m * tensao_fase_med
+    p_apar_t_m = i_pico_t_m * tensao_fase_med
+    p_apar_total_m = p_apar_r_m + p_apar_s_m + p_apar_t_m
+
+    i_cond_total_m = i_capacidade_cabo_med * num_cabos_med
+    i_prot_total_m = i_protecao_med * num_cabos_med
+    
+    pct_condutor_m = (i_max_pico_m / i_cond_total_m) * 100 if i_cond_total_m > 0 else 0
+    pct_dispositivo_m = (i_max_pico_m / i_prot_total_m) * 100 if i_prot_total_m > 0 else 0
+    disp_restante_m = i_prot_total_m - i_max_pico_m
+    bitola_texto_m = bitola_med.replace(" mm² - ", "mm²-")
+
+    p_disp_prot_total_m = max(0.0, (i_prot_total_m - i_max_pico_m) * tensao_fase_med) * 3
+    p_disp_cond_total_m = max(0.0, (i_cond_total_m - i_max_pico_m) * tensao_fase_med) * 3
+    p_disp_menor_kw_m = min(p_disp_prot_total_m, p_disp_cond_total_m) / 1000.0
+
+    texto_analise_med = f"""As medições proporcionais calculadas para a caixa de medidores (considerando {qtd_unid_caixa} unidades em um total de {qtd_total_apts} apartamentos) indicaram as correntes máximas de {fmt(ir_am_max_m)}A na fase R, {fmt(is_am_max_m)}A na fase S e {fmt(it_am_max_m)}A na fase T.
+A caixa de medidores conta com {num_cabos_med} dispositivos de proteção, totalizando correntes de pico de {fmt(i_pico_r_m)}A na fase R, {fmt(i_pico_s_m)}A na fase S e {fmt(i_pico_t_m)}A na fase T.
+A alimentação da caixa é realizada por condutor de seção {bitola_texto_m}, com capacidade teórica de condução de corrente de {fmt(i_capacidade_cabo_med, 0)}A por fase. A maior corrente de pico medida ({fmt(i_max_pico_m)}A) representa aproximadamente {fmt(pct_condutor_m)}% da capacidade do condutor.
+Considerando a proteção da caixa ({num_cabos_med} x {fmt(i_protecao_med, 0)} = {fmt(i_prot_total_m, 0)}A), verifica-se que a maior corrente de pico corresponde a aproximadamente {fmt(pct_dispositivo_m)}% da capacidade nominal do dispositivo, restando uma capacidade disponível na ordem de {fmt(disp_restante_m)}A na fase analisada.
+Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_kw_m)} kW na caixa de medidores."""
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("📝 **Análise Completa da Caixa de Medidores:**")
+    st.success(texto_analise_med)
+    st.code(texto_analise_med, language="text")
+
+    st.markdown("---")
+    
+    if sigla_tipo_med == "AC":
+        st.subheader("❄️ Simulador de Cargas AC (Caixa de Medidores)")
+        qtd_carregadores_m = st.number_input("Quantidade de Ar Condicionado a Adicionar (X):", min_value=0, value=1, step=1, key="m_qtd_ac")
+        btu_sel_m = st.selectbox("Potência do Ar Condicionado:", ["9.000 BTU/h", "12.000 BTU/h", "18.000 BTU/h", "24.000 BTU/h"], key="m_btu_sel")
+        if "9.000" in btu_sel_m: potencia_carregador_kw_m = 1.0
+        elif "12.000" in btu_sel_m: potencia_carregador_kw_m = 1.2
+        elif "18.000" in btu_sel_m: potencia_carregador_kw_m = 1.6
+        else: potencia_carregador_kw_m = 2.0
+        st.info(f"Potência unitária considerada para cálculo: **{potencia_carregador_kw_m:.1f} kW** ({btu_sel_m})")
+    else:
+        st.subheader("🚗 Simulador de Cargas VE (Caixa de Medidores)")
+        qtd_carregadores_m = st.number_input("Quantidade de Carregadores a Adicionar (X):", min_value=0, value=1, step=1, key="m_qtd_ve")
+        ve_sel_m = st.selectbox("Potência por Carregador:", ["3.700W (3.7 kW)", "7.400W (7.4 kW)", "11.000W (11.0 kW)"], key="m_ve_sel")
+        if "3.700" in ve_sel_m: potencia_carregador_kw_m = 3.7
+        elif "7.400" in ve_sel_m: potencia_carregador_kw_m = 7.4
+        else: potencia_carregador_kw_m = 11.0
+        st.info(f"Potência unitária considerada para cálculo: **{potencia_carregador_kw_m:.1f} kW**")
+    
+    potencia_total_ve_watts_m = qtd_carregadores_m * potencia_carregador_kw_m * 1000
+    corrente_por_fase_ve_m = potencia_total_ve_watts_m / (220.0 * np.sqrt(3))
+
+    r_total_m = serie_r_med * num_cabos_med + corrente_por_fase_ve_m
+    s_total_m = serie_s_med * num_cabos_med + corrente_por_fase_ve_m
+    t_total_m = serie_t_med * num_cabos_med + corrente_por_fase_ve_m
+
+    i_pico_r_proj_m = float(r_total_m.max()) if len(r_total_m) > 0 else 0.0
+    i_pico_s_proj_m = float(s_total_m.max()) if len(s_total_m) > 0 else 0.0
+    i_pico_t_proj_m = float(t_total_m.max()) if len(t_total_m) > 0 else 0.0
+    i_max_pico_proj_m = max(i_pico_r_proj_m, i_pico_s_proj_m, i_pico_t_proj_m)
+
+    p_apar_r_m_proj, p_apar_s_m_proj, p_apar_t_m_proj = i_pico_r_proj_m * tensao_fase_med, i_pico_s_proj_m * tensao_fase_med, i_pico_t_proj_m * tensao_fase_med
+    p_apar_total_m_proj = p_apar_r_m_proj + p_apar_s_m_proj + p_apar_t_m_proj
+
+    st.session_state["dados_med"] = {
+        "i_pico_max": i_max_pico_proj_m, "p_apar_total": p_apar_total_m_proj,
+        "p_disp_prot_total": p_disp_prot_total_m, "p_disp_cond_total": p_disp_cond_total_m,
+        "p_disp_menor_kva": p_disp_menor_kw_m,
+        "bitola": bitola_med, "i_cap_cabo": i_cond_total_m, "i_protecao": i_prot_total_m,
+        "pct_condutor": (i_max_pico_proj_m / i_cond_total_m) * 100 if i_cond_total_m > 0 else 0,
+        "pct_dispositivo": (i_max_pico_proj_m / i_prot_total_m) * 100 if i_prot_total_m > 0 else 0,
+        "disp_restante": i_prot_total_m - i_max_pico_proj_m, "sigla_tipo": sigla_tipo_med
+    }
+
+    status_r_m = "⚠️ ULTRAPASSA" if i_pico_r_proj_m > i_prot_total_m or i_pico_r_proj_m > i_cond_total_m else "✅ OK"
+    status_s_m = "⚠️ ULTRAPASSA" if i_pico_s_proj_m > i_prot_total_m or i_pico_s_proj_m > i_cond_total_m else "✅ OK"
+    status_t_m = "⚠️ ULTRAPASSA" if i_pico_t_proj_m > i_prot_total_m or i_pico_t_proj_m > i_cond_total_m else "✅ OK"
+
+    headers_tabela_m = ["Parâmetro / Métrica", "Fase R", "Fase S", "Fase T", "Referência de Limite"]
+    valores_tabela_m = [
+        ["Corrente Proporcional Medida (A)", "Potência Aparente Referente à Medida (VA)", f"Potência Aparente Total + {sigla_tipo_med} (VA)", f"Corrente Pico Total + {sigla_tipo_med} (A)", f"Capacidade do Cabo ({num_cabos_med}x {bitola_med})", "Corrente de Proteção Geral", "Status da Carga vs Limites"],
+        [f"{i_pico_r_m:.2f} A", f"{p_apar_r_m:.2f} VA", f"{p_apar_r_m_proj:.2f} VA", f"{i_pico_r_proj_m:.2f} A", f"{i_cond_total_m:.2f} A", f"{i_prot_total_m:.2f} A", status_r_m],
+        [f"{i_pico_s_m:.2f} A", f"{p_apar_s_m:.2f} VA", f"{p_apar_s_m_proj:.2f} VA", f"{i_pico_s_proj_m:.2f} A", f"{i_cond_total_m:.2f} A", f"{i_prot_total_m:.2f} A", status_s_m],
+        [f"{i_pico_t_m:.2f} A", f"{p_apar_t_m:.2f} VA", f"{p_apar_t_m_proj:.2f} VA", f"{i_pico_t_proj_m:.2f} A", f"{i_cond_total_m:.2f} A", f"{i_prot_total_m:.2f} A", status_t_m],
+        ["Proporcionalidade Aplicada", f"Total: {p_apar_r_m + p_apar_s_m + p_apar_t_m:.2f} VA", f"Total: {p_apar_total_m_proj:.2f} VA", "Corrente Calculada por Fase", "Limite Máx. dos Condutores", "Limite Máx. das Proteções", "Avaliação por Fase"]
+    ]
+
+    fig_tabela_m = go.Figure(data=[go.Table(
+        header=dict(values=headers_tabela_m, fill_color='#1E3A8A', align='center', font=dict(color='white', size=13)),
+        cells=dict(values=valores_tabela_m, fill_color=[['#F3F4F6', '#ffffff', '#F9FAFB', '#ffffff', '#F9FAFB', '#ffffff', '#EFF6FF']*1], align='center', font=dict(color='#1F2937', size=12), height=30)
+    )])
+    fig_tabela_m.update_layout(title=dict(text="<b>Quadro de Potências e Correntes - Caixa de Medidores</b>", font=dict(size=16)), margin=dict(l=10, r=10, t=40, b=10), height=320)
+
+    st.markdown("---")
+    st.subheader("📋 Quadro de Potências e Correntes - Caixa de Medidores")
+    st.plotly_chart(fig_tabela_m, width='stretch', config={"displayModeBar": True})
+
+    st.markdown("---")
+    st.subheader(f"📈 Gráfico de Evolução de Correntes (Consumo Proporcional vs Projeção com {sigla_tipo_med})")
+
+    col_cb1_m, col_cb2_m, col_cb3_m = st.columns(3)
+    show_r_m = col_cb1_m.checkbox("Exibir Fases R (Medidores)", value=True, key="chk_r_med")
+    show_s_m = col_cb2_m.checkbox("Exibir Fases S (Medidores)", value=True, key="chk_s_med")
+    show_t_m = col_cb3_m.checkbox("Exibir Fases T (Medidores)", value=True, key="chk_t_med")
+
+    fig_m = go.Figure()
+    if show_r_m:
+        fig_m.add_trace(go.Scatter(y=serie_r_med * num_cabos_med, mode='lines', name='Fase R (Proporcional)', line=dict(color='#FCA5A5', width=1.5, dash='dot')))
+        fig_m.add_trace(go.Scatter(y=r_total_m, mode='lines+markers', name=f'Fase R (Total + {sigla_tipo_med})', line=dict(color='#DC2626', width=2)))
+    if show_s_m:
+        fig_m.add_trace(go.Scatter(y=serie_s_med * num_cabos_med, mode='lines', name='Fase S (Proporcional)', line=dict(color='#93C5FD', width=1.5, dash='dot')))
+        fig_m.add_trace(go.Scatter(y=s_total_m, mode='lines+markers', name=f'Fase S (Total + {sigla_tipo_med})', line=dict(color='#2563EB', width=2)))
+    if show_t_m:
+        fig_m.add_trace(go.Scatter(y=serie_t_med * num_cabos_med, mode='lines', name='Fase T (Proporcional)', line=dict(color='#6EE7B7', width=1.5, dash='dot')))
+        fig_m.add_trace(go.Scatter(y=t_total_m, mode='lines+markers', name=f'Fase T (Total + {sigla_tipo_med})', line=dict(color='#059669', width=2)))
+
+    fig_m.add_hline(y=i_cond_total_m, line_dash="dash", line_color="#D97706", annotation_text=f"Limite Cabos ({i_cond_total_m}A)")
+    fig_m.add_hline(y=i_prot_total_m, line_dash="dot", line_color="#7C3AED", annotation_text=f"Limite Proteção ({i_prot_total_m}A)")
+
+    fig_m.update_layout(title=f"Perfil de Correntes por Fase - Caixa de Medidores", xaxis_title="Amostras / Horários", yaxis_title="Corrente por Fase (A)", template="plotly_white", height=450)
+    st.plotly_chart(fig_m, width='stretch')
+
+    ultrapassou_cabo_m = i_max_pico_proj_m > i_cond_total_m
+    ultrapassou_prot_m = i_max_pico_proj_m > i_prot_total_m
+    status_comporta_m = "NÃO COMPORTA" if (ultrapassou_cabo_m or ultrapassou_prot_m) else "COMPORTA"
+    
+    if sigla_tipo_med == "AC": texto_resumo_cliente_m = f"O sistema elétrico da Caixa de Medidores {status_comporta_m} o acréscimo de {int(qtd_carregadores_m)} Unidades de Ar Condicionado de {btu_sel_m}."
+    else: texto_resumo_cliente_m = f"O sistema elétrico da Caixa de Medidores {status_comporta_m} o acréscimo de {int(qtd_carregadores_m)} Carregadores Veiculares de {fmt(potencia_carregador_kw_m)}KW."
+
+    st.markdown("📋 **Resumo da Simulação (Pronto para Cópia):**")
+    st.code(texto_resumo_cliente_m, language="text")
+
+# --- ABA 4: CONCLUSÃO & LAUDO TÉCNICO ---
+with tab4:
+    st.header("📝 4. Quadro Comparativo & Laudo Técnico")
 
     g = st.session_state.get("dados_geral", {})
     a = st.session_state.get("dados_adm", {})
+    m = st.session_state.get("dados_med", {})
     sigla_tipo = g.get("sigla_tipo", "VE")
 
     if not g or not a:
@@ -558,23 +771,24 @@ with tab3:
     else:
         p_disp_entrada_kva = g.get("p_disp_menor_kva", 0)
         p_disp_adm_kva = a.get("p_disp_menor_kva", 0)
+        p_disp_med_kva = m.get("p_disp_menor_kva", 0)
 
         st.subheader("📊 Quadro Geral Comparativo")
         
         headers_comp = ["Setor Analisado", "P. Aparente Medida", "P. Disp. Proteção", "P. Disp. Condutor", "P. Disp. Total (100% Carga)"]
         valores_comp = [
-            ["Entrada de Energia (Geral)", "Quadro Administrativo (ADM)"],
-            [f"{g.get('p_apar_total',0)/1000:.2f} kVA", f"{a.get('p_apar_total',0)/1000:.2f} kVA"],
-            [f"{g.get('p_disp_prot_total',0)/1000:.2f} kVA", f"{a.get('p_disp_prot_total',0)/1000:.2f} kVA"],
-            [f"{g.get('p_disp_cond_total',0)/1000:.2f} kVA", f"{a.get('p_disp_cond_total',0)/1000:.2f} kVA"],
-            [f"{p_disp_entrada_kva:.2f} kW", f"{p_disp_adm_kva:.2f} kW"]
+            ["Entrada de Energia (Geral)", "Quadro Administrativo (ADM)", "Caixa de Medidores"],
+            [f"{g.get('p_apar_total',0)/1000:.2f} kVA", f"{a.get('p_apar_total',0)/1000:.2f} kVA", f"{m.get('p_apar_total',0)/1000:.2f} kVA"],
+            [f"{g.get('p_disp_prot_total',0)/1000:.2f} kVA", f"{a.get('p_disp_prot_total',0)/1000:.2f} kVA", f"{m.get('p_disp_prot_total',0)/1000:.2f} kVA"],
+            [f"{g.get('p_disp_cond_total',0)/1000:.2f} kVA", f"{a.get('p_disp_cond_total',0)/1000:.2f} kVA", f"{m.get('p_disp_cond_total',0)/1000:.2f} kVA"],
+            [f"{p_disp_entrada_kva:.2f} kW", f"{p_disp_adm_kva:.2f} kW", f"{p_disp_med_kva:.2f} kW"]
         ]
 
         fig_comp = go.Figure(data=[go.Table(
             header=dict(values=headers_comp, fill_color='#1E3A8A', align='center', font=dict(color='white', size=13)),
-            cells=dict(values=valores_comp, fill_color=[['#F3F4F6', '#ffffff']*1], align='center', font=dict(color='#1F2937', size=12), height=30)
+            cells=dict(values=valores_comp, fill_color=[['#F3F4F6', '#ffffff', '#F9FAFB']*1], align='center', font=dict(color='#1F2937', size=12), height=30)
         )])
-        fig_comp.update_layout(title=dict(text="<b>Quadro Geral Comparativo</b>", font=dict(size=16)), margin=dict(l=10, r=10, t=40, b=10), height=200)
+        fig_comp.update_layout(title=dict(text="<b>Quadro Geral Comparativo</b>", font=dict(size=16)), margin=dict(l=10, r=10, t=40, b=10), height=220)
         st.plotly_chart(fig_comp, width='stretch')
 
         col_c1, col_c2 = st.columns(2)
@@ -592,15 +806,18 @@ with tab3:
 
         p_disp_entrada_80 = p_disp_entrada_kva * 0.8
         p_disp_adm_80 = p_disp_adm_kva * 0.8
+        p_disp_med_80 = p_disp_med_kva * 0.8
 
         texto_laudo = f"""De acordo com as medições realizadas, verificou-se que o condomínio dispõe de uma potência de {fmt(p_disp_entrada_kva)} kVA na entrada de energia. Para garantir maior segurança e confiabilidade ao sistema elétrico, recomenda-se a utilização de até 80% desse valor ({fmt(p_disp_entrada_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema.
 
-De forma similar, o quadro administrativo apresenta uma potência disponível de aproximadamente {fmt(p_disp_adm_kva)} kVA. Sugere-se, pelos mesmos critérios de segurança operacional, limitar o uso a até 80% dessa capacidade ({fmt(p_disp_adm_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema."""
+De forma similar, o quadro administrativo apresenta uma potência disponível de aproximadamente {fmt(p_disp_adm_kva)} kVA. Sugere-se, pelos mesmos critérios de segurança operacional, limitar o uso a até 80% dessa capacidade ({fmt(p_disp_adm_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema.
+
+Adicionalmente, a caixa de medidores apresenta uma potência disponível de aproximadamente {fmt(p_disp_med_kva)} kVA. Sugere-se limitar o uso a até 80% dessa capacidade ({fmt(p_disp_med_80)} kVA) sob os mesmos critérios de segurança e reserva técnica operacional."""
 
         st.success(texto_laudo)
         st.code(texto_laudo, language="text")
 
-        # --- NOVA SEÇÃO: SALVAR/ATUALIZAR RELATÓRIO ---
+        # --- SEÇÃO: SALVAR/ATUALIZAR RELATÓRIO ---
         st.markdown("---")
         st.subheader("💾 Salvar Relatório Atual")
         st.info("Salve o progresso atual para consultá-lo depois. Se mantiver o mesmo nome, o relatório será atualizado com os novos dados.")
