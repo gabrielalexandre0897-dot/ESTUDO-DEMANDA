@@ -564,7 +564,7 @@ with tab3:
         st.markdown("---")
         st.subheader("📄 Texto Oficial do Laudo Técnico (Passe o mouse no canto superior direito para COPIAR)")
 
-        # Cálculos dos 80% de limite de segurança (Adicionado no modelo)
+        # Cálculos dos 80% de limite de segurança
         p_disp_entrada_80 = p_disp_entrada_kva * 0.8
         p_disp_adm_80 = p_disp_adm_kva * 0.8
 
@@ -589,11 +589,16 @@ De forma similar, o quadro administrativo apresenta uma potência disponível de
                 if not nome_novo_relatorio:
                     st.warning("⚠️ Digite um nome para o relatório antes de salvar.")
                 else:
-                    # Varre a memória e cria uma cópia profunda de todos os inputs do usuário para salvar
+                    # Varre a memória e cria uma cópia profunda
                     estado_salvo = {}
                     for chave, valor in st.session_state.items():
                         if chave not in ["saved_reports", "reset_key"] and not chave.startswith("FormSubmitter"):
                             estado_salvo[chave] = copy.deepcopy(valor)
                     
                     st.session_state["saved_reports"][nome_novo_relatorio] = estado_salvo
-                    st.success(f"✅ Relatório '{nome_novo_relatorio}' salvo com sucesso! Confira na aba lateral.")
+                    
+                    # Usa um toast (notificação flutuante) para o aviso não sumir no rerun
+                    st.toast(f"Relatório '{nome_novo_relatorio}' salvo com sucesso!", icon="✅")
+                    
+                    # Força a tela a recarregar para atualizar a barra lateral na hora!
+                    st.rerun()
