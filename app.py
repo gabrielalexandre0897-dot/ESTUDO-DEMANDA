@@ -784,7 +784,7 @@ with tab4:
             [f"{g.get('p_apar_total',0)/1000:.2f} kVA", f"{a.get('p_apar_total',0)/1000:.2f} kVA", f"{m.get('p_apar_total',0)/1000:.2f} kVA"],
             [f"{g.get('p_disp_prot_total',0)/1000:.2f} kVA", f"{a.get('p_disp_prot_total',0)/1000:.2f} kVA", f"{m.get('p_disp_prot_total',0)/1000:.2f} kVA"],
             [f"{g.get('p_disp_cond_total',0)/1000:.2f} kVA", f"{a.get('p_disp_cond_total',0)/1000:.2f} kVA", f"{m.get('p_disp_cond_total',0)/1000:.2f} kVA"],
-            [f"{p_disp_entrada_kva:.2f} kW", f"{p_disp_adm_kva:.2f} kW", f"{p_disp_med_kva:.2f} kW"]
+            [f"{p_disp_entrada_kva:.2f} kVA", f"{p_disp_adm_kva:.2f} kVA", f"{p_disp_med_kva:.2f} kVA"]
         ]
 
         fig_comp = go.Figure(data=[go.Table(
