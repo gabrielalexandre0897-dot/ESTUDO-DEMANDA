@@ -1102,7 +1102,7 @@ with tab4:
             # Medidores VE (Calculado com 100% de p_disp_med_kva)
             qtd_med_74 = int(p_disp_med_kva // 7.4) if p_disp_med_kva > 0 else 0
             qtd_med_37 = int(p_disp_med_kva // 3.7) if p_disp_med_kva > 0 else 0
-            paragrafo_med = f"Adicionalmente, as caixas com {int(x_medidores)} medidores apresentam uma potência disponível de aproximadamente {fmt(p_disp_med_kva)} kVA. Se o sistema de gerenciamento de carga for desconsiderado, a demanda disponível permite a utilização simultânea de {qtd_med_74} carregadores veiculares de 7400W, ou alternativamente, {qtd_med_37} carregadores de 3700W nas caixas dos medidores."
+            paragrafo_med = f"Adicionalmente, as caixas com {int(x_medidores)} medidores apresentam uma potência disponível de aproximadamente {fmt(p_disp_med_kva)} kVA. A demanda disponível permite a utilização simultânea de {qtd_med_74} carregadores veiculares de 7400W, ou alternativamente, {qtd_med_37} carregadores de 3700W nas caixas dos medidores."
 
         texto_laudo = f"{paragrafo_geral}\n\n{paragrafo_adm}\n\n{paragrafo_med}"
 
