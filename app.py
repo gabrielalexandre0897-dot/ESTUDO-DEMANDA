@@ -188,6 +188,7 @@ def excluir_relatorio_db(username, nome_relatorio):
     try:
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
+        cursor.execute("DELETE FROM relatorios WHERE username = ? AND nome_relatorio = ?", (nome_novo, username, nome_antigo)) # Deleta o registro correto
         cursor.execute("DELETE FROM relatorios WHERE username = ? AND nome_relatorio = ?", (username, nome_relatorio))
         conn.commit()
         conn.close()
@@ -306,7 +307,7 @@ if st.session_state.get("show_modal_novo_relatorio", False):
     @st.dialog("➕ Criar Novo Relatório")
     def dialog_novo_relatorio():
         st.write("Selecione o tipo de estudo e defina o nome inicial do relatório:")
-        t_sel = st.radio("Tipo de Estudo:", ["Veículos Elétricos (VE)", "Ar Condicionado (AC)"], key="diag_tipo_estudo")
+        t_sel = st.radio("Tipo de Estudo:", ["Veículos Elétricos (VE)", "Ar Condicionado (AC)", "Ar Condicionado & Veículos Elétricos (AC+VE)"], key="diag_tipo_estudo")
         n_sel = st.text_input("Nome do Relatório:", placeholder="Ex: Condomínio Solar - Bloco A", key="diag_nome_rel")
         
         col_d1, col_d2 = st.columns(2)
@@ -434,10 +435,16 @@ def extrair_dados_completos(df):
     except: pass
     return None, None, None
 
-st.title("⚡ Estudo de Demanda Elétrica & Capacidade (VE / AC)")
+st.title("⚡ Estudo de Demanda Elétrica & Capacidade (VE / AC / AC+VE)")
 
 # ALERTA DE TIPO DE ESTUDO SELECIONADO
-sigla_estudo_global = "VE" if "Veículos" in st.session_state["tipo_estudo_global"] else "AC"
+if "AC+VE" in st.session_state["tipo_estudo_global"]:
+    sigla_estudo_global = "AC+VE"
+elif "Ar Condicionado" in st.session_state["tipo_estudo_global"]:
+    sigla_estudo_global = "AC"
+else:
+    sigla_estudo_global = "VE"
+
 st.info(f"📋 **Estudo Atual Configurado para:** {st.session_state['tipo_estudo_global']}")
 
 tab1, tab2, tab3, tab4 = st.tabs([
@@ -531,7 +538,8 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
         elif "18.000" in btu_sel: p_kw = 1.6
         else: p_kw = 2.0
         st.info(f"Potência unitária considerada para cálculo: **{p_kw:.1f} kW** ({btu_sel})")
-    else:
+        potencia_total_watts = qtd_add * p_kw * 1000
+    elif sigla == "VE":
         st.subheader("🚗 Simulador de Cargas VE")
         qtd_add = st.number_input("Quantidade de Carregadores a Adicionar (X):", min_value=0, value=2, step=1, key="g_qtd_ve")
         ve_sel = st.selectbox("Potência por Carregador:", ["3.700W (3.7 kW)", "7.400W (7.4 kW)", "11.000W (11.0 kW)"], key="g_ve_sel")
@@ -539,9 +547,23 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
         elif "7.400" in ve_sel: p_kw = 7.4
         else: p_kw = 11.0
         st.info(f"Potência unitária considerada para cálculo: **{p_kw:.1f} kW**")
-    
-    potencia_total_ve_watts = qtd_add * p_kw * 1000
-    corr_add = potencia_total_ve_watts / (220.0 * np.sqrt(3))
+        potencia_total_watts = qtd_add * p_kw * 1000
+    else: # AC+VE
+        st.subheader("⚡ Simulador de Cargas Combinadas (AC + VE)")
+        col_s1, col_s2 = st.columns(2)
+        with col_s1:
+            qtd_ac_misto = st.number_input("Qtd. Ar Condicionado (X):", min_value=0, value=2, step=1, key="g_qtd_ac_misto")
+            btu_sel_misto = st.selectbox("Potência por AC:", ["9.000 BTU/h", "12.000 BTU/h", "18.000 BTU/h", "24.000 BTU/h"], key="g_btu_misto")
+            p_kw_ac = 1.0 if "9.000" in btu_sel_misto else (1.2 if "12.000" in btu_sel_misto else (1.6 if "18.000" in btu_sel_misto else 2.0))
+        with col_s2:
+            qtd_ve_misto = st.number_input("Qtd. Carregadores VE (X):", min_value=0, value=2, step=1, key="g_qtd_ve_misto")
+            ve_sel_misto = st.selectbox("Potência por VE:", ["3.700W (3.7 kW)", "7.400W (7.4 kW)", "11.000W (11.0 kW)"], key="g_ve_misto")
+            p_kw_ve = 3.7 if "3.700" in ve_sel_misto else (7.4 if "7.400" in ve_sel_misto else 11.0)
+        
+        potencia_total_watts = (qtd_ac_misto * p_kw_ac + qtd_ve_misto * p_kw_ve) * 1000
+        st.info(f"Potência Total Adicionada: **{((qtd_ac_misto * p_kw_ac) + (qtd_ve_misto * p_kw_ve)):.1f} kW** ({qtd_ac_misto} ACs + {qtd_ve_misto} VEs)")
+
+    corr_add = potencia_total_watts / (220.0 * np.sqrt(3))
 
     r_base_total_serie = serie_r_b.iloc[:min_len] * num_cabos
     s_base_total_serie = serie_s_b.iloc[:min_len] * num_cabos
@@ -637,7 +659,8 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
     status_comporta = "NÃO COMPORTA" if (ultrapassou_cabo or ultrapassou_prot) else "COMPORTA"
     
     if sigla == "AC": texto_resumo_cliente = f"O sistema elétrico da Entrada de Energia {status_comporta} o acréscimo de {int(qtd_add)} Unidades de Ar Condicionado de {btu_sel}."
-    else: texto_resumo_cliente = f"O sistema elétrico da Entrada de Energia {status_comporta} o acréscimo de {int(qtd_add)} Carregadores Veiculares de {fmt(p_kw)}KW."
+    elif sigla == "VE": texto_resumo_cliente = f"O sistema elétrico da Entrada de Energia {status_comporta} o acréscimo de {int(qtd_add)} Carregadores Veiculares de {fmt(p_kw)}KW."
+    else: texto_resumo_cliente = f"O sistema elétrico da Entrada de Energia {status_comporta} o acréscimo de {int(qtd_ac_misto)} ACs ({btu_sel_misto}) e {int(qtd_ve_misto)} VEs ({fmt(p_kw_ve)}KW)."
 
     st.markdown("📋 **Resumo da Simulação (Pronto para Cópia):**")
     st.code(texto_resumo_cliente, language="text")
@@ -725,7 +748,8 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
         elif "18.000" in btu_sel_a: potencia_carregador_kw_a = 1.6
         else: potencia_carregador_kw_a = 2.0
         st.info(f"Potência unitária considerada para cálculo: **{potencia_carregador_kw_a:.1f} kW** ({btu_sel_a})")
-    else:
+        potencia_total_watts_a = qtd_carregadores_a * potencia_carregador_kw_a * 1000
+    elif sigla_a == "VE":
         st.subheader("🚗 Simulador de Cargas VE (Quadro Administrativo)")
         qtd_carregadores_a = st.number_input("Quantidade de Carregadores a Adicionar (X):", min_value=0, value=1, step=1, key="a_qtd_ve")
         ve_sel_a = st.selectbox("Potência por Carregador:", ["3.700W (3.7 kW)", "7.400W (7.4 kW)", "11.000W (11.0 kW)"], key="a_ve_sel")
@@ -733,9 +757,23 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
         elif "7.400" in ve_sel_a: potencia_carregador_kw_a = 7.4
         else: potencia_carregador_kw_a = 11.0
         st.info(f"Potência unitária considerada para cálculo: **{potencia_carregador_kw_a:.1f} kW**")
-    
-    potencia_total_ve_watts_a = qtd_carregadores_a * potencia_carregador_kw_a * 1000
-    corrente_por_fase_ve_a = potencia_total_ve_watts_a / (220.0 * np.sqrt(3))
+        potencia_total_watts_a = qtd_carregadores_a * potencia_carregador_kw_a * 1000
+    else: # AC+VE
+        st.subheader("⚡ Simulador de Cargas Combinadas (AC + VE - ADM)")
+        col_sa1, col_sa2 = st.columns(2)
+        with col_sa1:
+            qtd_ac_a_misto = st.number_input("Qtd. Ar Condicionado (X):", min_value=0, value=1, step=1, key="a_qtd_ac_misto")
+            btu_sel_a_misto = st.selectbox("Potência por AC:", ["9.000 BTU/h", "12.000 BTU/h", "18.000 BTU/h", "24.000 BTU/h"], key="a_btu_misto")
+            p_kw_ac_a = 1.0 if "9.000" in btu_sel_a_misto else (1.2 if "12.000" in btu_sel_a_misto else (1.6 if "18.000" in btu_sel_a_misto else 2.0))
+        with col_sa2:
+            qtd_ve_a_misto = st.number_input("Qtd. Carregadores VE (X):", min_value=0, value=1, step=1, key="a_qtd_ve_misto")
+            ve_sel_a_misto = st.selectbox("Potência por VE:", ["3.700W (3.7 kW)", "7.400W (7.4 kW)", "11.000W (11.0 kW)"], key="a_ve_misto")
+            p_kw_ve_a = 3.7 if "3.700" in ve_sel_a_misto else (7.4 if "7.400" in ve_sel_a_misto else 11.0)
+        
+        potencia_total_watts_a = (qtd_ac_a_misto * p_kw_ac_a + qtd_ve_a_misto * p_kw_ve_a) * 1000
+        st.info(f"Potência Total Adicionada: **{((qtd_ac_a_misto * p_kw_ac_a) + (qtd_ve_a_misto * p_kw_ve_a)):.1f} kW** ({qtd_ac_a_misto} ACs + {qtd_ve_a_misto} VEs)")
+
+    corrente_por_fase_ve_a = potencia_total_watts_a / (220.0 * np.sqrt(3))
 
     r_base_total_serie_a = serie_r_base_a.iloc[:min_len_a] * num_cabos_adm
     s_base_total_serie_a = serie_s_base_a.iloc[:min_len_a] * num_cabos_adm
@@ -830,7 +868,8 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
     status_comporta_a = "NÃO COMPORTA" if (ultrapassou_cabo_a or ultrapassou_prot_a) else "COMPORTA"
     
     if sigla_a == "AC": texto_resumo_cliente_a = f"O sistema elétrico do Quadro Administrativo {status_comporta_a} o acréscimo de {int(qtd_carregadores_a)} Unidades de Ar Condicionado de {btu_sel_a}."
-    else: texto_resumo_cliente_a = f"O sistema elétrico do Quadro Administrativo {status_comporta_a} o acréscimo de {int(qtd_carregadores_a)} Carregadores Veiculares de {fmt(potencia_carregador_kw_a)}KW."
+    elif sigla_a == "VE": texto_resumo_cliente_a = f"O sistema elétrico do Quadro Administrativo {status_comporta_a} o acréscimo de {int(qtd_carregadores_a)} Carregadores Veiculares de {fmt(potencia_carregador_kw_a)}KW."
+    else: texto_resumo_cliente_a = f"O sistema elétrico do Quadro Administrativo {status_comporta_a} o acréscimo de {int(qtd_ac_a_misto)} ACs ({btu_sel_a_misto}) e {int(qtd_ve_a_misto)} VEs ({fmt(p_kw_ve_a)}KW)."
 
     st.markdown("📋 **Resumo da Simulação (Pronto para Cópia):**")
     st.code(texto_resumo_cliente_a, language="text")
@@ -922,7 +961,8 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
         elif "18.000" in btu_sel_m: potencia_carregador_kw_m = 1.6
         else: potencia_carregador_kw_m = 2.0
         st.info(f"Potência unitária considerada para cálculo: **{potencia_carregador_kw_m:.1f} kW** ({btu_sel_m})")
-    else:
+        potencia_total_watts_m = qtd_carregadores_m * potencia_carregador_kw_m * 1000
+    elif sigla_m == "VE":
         st.subheader("🚗 Simulador de Cargas VE (Caixa de Medidores)")
         qtd_carregadores_m = st.number_input("Quantidade de Carregadores a Adicionar (X):", min_value=0, value=1, step=1, key="m_qtd_ve")
         ve_sel_m = st.selectbox("Potência por Carregador:", ["3.700W (3.7 kW)", "7.400W (7.4 kW)", "11.000W (11.0 kW)"], key="m_ve_sel")
@@ -930,9 +970,23 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
         elif "7.400" in ve_sel_m: potencia_carregador_kw_m = 7.4
         else: potencia_carregador_kw_m = 11.0
         st.info(f"Potência unitária considerada para cálculo: **{potencia_carregador_kw_m:.1f} kW**")
-    
-    potencia_total_ve_watts_m = qtd_carregadores_m * potencia_carregador_kw_m * 1000
-    corrente_por_fase_ve_m = potencia_total_ve_watts_m / (220.0 * np.sqrt(3))
+        potencia_total_watts_m = qtd_carregadores_m * potencia_carregador_kw_m * 1000
+    else: # AC+VE
+        st.subheader("⚡ Simulador de Cargas Combinadas (AC + VE - Caixa de Medidores)")
+        col_sm1, col_sm2 = st.columns(2)
+        with col_sm1:
+            qtd_ac_m_misto = st.number_input("Qtd. Ar Condicionado (X):", min_value=0, value=1, step=1, key="m_qtd_ac_misto")
+            btu_sel_m_misto = st.selectbox("Potência por AC:", ["9.000 BTU/h", "12.000 BTU/h", "18.000 BTU/h", "24.000 BTU/h"], key="m_btu_misto")
+            p_kw_ac_m = 1.0 if "9.000" in btu_sel_m_misto else (1.2 if "12.000" in btu_sel_m_misto else (1.6 if "18.000" in btu_sel_m_misto else 2.0))
+        with col_sm2:
+            qtd_ve_m_misto = st.number_input("Qtd. Carregadores VE (X):", min_value=0, value=1, step=1, key="m_qtd_ve_misto")
+            ve_sel_m_misto = st.selectbox("Potência por VE:", ["3.700W (3.7 kW)", "7.400W (7.4 kW)", "11.000W (11.0 kW)"], key="m_ve_misto")
+            p_kw_ve_m = 3.7 if "3.700" in ve_sel_m_misto else (7.4 if "7.400" in ve_sel_m_misto else 11.0)
+        
+        potencia_total_watts_m = (qtd_ac_m_misto * p_kw_ac_m + qtd_ve_m_misto * p_kw_ve_m) * 1000
+        st.info(f"Potência Total Adicionada: **{((qtd_ac_m_misto * p_kw_ac_m) + (qtd_ve_m_misto * p_kw_ve_m)):.1f} kW** ({qtd_ac_m_misto} ACs + {qtd_ve_m_misto} VEs)")
+
+    corrente_por_fase_ve_m = potencia_total_watts_m / (220.0 * np.sqrt(3))
 
     r_total_m = serie_r_med * num_cabos_med + corrente_por_fase_ve_m
     s_total_m = serie_s_med * num_cabos_med + corrente_por_fase_ve_m
@@ -954,7 +1008,7 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
         "pct_condutor": (i_max_pico_proj_m / i_cond_total_m) * 100 if i_cond_total_m > 0 else 0,
         "pct_dispositivo": (i_max_pico_proj_m / i_prot_total_m) * 100 if i_prot_total_m > 0 else 0,
         "disp_restante": i_prot_total_m - i_max_pico_proj_m, "sigla_tipo": sigla_m,
-        "qtd_unid_caixa": qtd_unid_caixa
+        "qtd_unid_caixa": qtd_unid_caixa, "qtd_total_apts": qtd_total_apts
     }
 
     stat_r_m = "⚠️ ACIMA" if i_pico_r_proj_m > i_prot_total_m or i_pico_r_proj_m > i_cond_total_m else "✅ OK"
@@ -1020,7 +1074,8 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
     status_comporta_m = "NÃO COMPORTA" if (ultrapassou_cabo_m or ultrapassou_prot_m) else "COMPORTA"
     
     if sigla_m == "AC": texto_resumo_cliente_m = f"O sistema elétrico da Caixa de Medidores {status_comporta_m} o acréscimo de {int(qtd_carregadores_m)} Unidades de Ar Condicionado de {btu_sel_m}."
-    else: texto_resumo_cliente_m = f"O sistema elétrico da Caixa de Medidores {status_comporta_m} o acréscimo de {int(qtd_carregadores_m)} Carregadores Veiculares de {fmt(potencia_carregador_kw_m)}KW."
+    elif sigla_m == "VE": texto_resumo_cliente_m = f"O sistema elétrico da Caixa de Medidores {status_comporta_m} o acréscimo de {int(qtd_carregadores_m)} Carregadores Veiculares de {fmt(potencia_carregador_kw_m)}KW."
+    else: texto_resumo_cliente_m = f"O sistema elétrico da Caixa de Medidores {status_comporta_m} o acréscimo de {int(qtd_ac_m_misto)} ACs ({btu_sel_m_misto}) e {int(qtd_ve_m_misto)} VEs ({fmt(p_kw_ve_m)}KW)."
 
     st.markdown("📋 **Resumo da Simulação (Pronto para Cópia):**")
     st.code(texto_resumo_cliente_m, language="text")
@@ -1042,6 +1097,7 @@ with tab4:
 
         sigla_geral = sigla_estudo_global
         x_medidores = m.get("qtd_unid_caixa", 16)
+        total_unidades = m.get("qtd_total_apts", 50)
 
         st.subheader("📊 Quadro Geral Comparativo")
         
@@ -1071,18 +1127,17 @@ with tab4:
         p_disp_adm_80 = p_disp_adm_kva * 0.8
         p_disp_med_80 = p_disp_med_kva * 0.8
 
-        # --- CONSTRUÇÃO DO TEXTO (UTILIZANDO 100% DA POTÊNCIA DISPONÍVEL) ---
+        # --- CONSTRUÇÃO DO TEXTO DO LAUDO ---
         if sigla_geral == "AC":
-            # Geral AC (Calculado com 100% de p_disp_entrada_kva para 9k, 12k, 18k e 24k BTU/h)
+            # Geral AC
             qtd_geral_9k = int(p_disp_entrada_kva // 1.0) if p_disp_entrada_kva > 0 else 0
             qtd_geral_12k = int(p_disp_entrada_kva // 1.2) if p_disp_entrada_kva > 0 else 0
             qtd_geral_18k = int(p_disp_entrada_kva // 1.6) if p_disp_entrada_kva > 0 else 0
             qtd_geral_24k = int(p_disp_entrada_kva // 2.0) if p_disp_entrada_kva > 0 else 0
             
-            # Sem a frase do quadro novo na caixa seccionadora
             paragrafo_geral = f"De acordo com as medições realizadas, verificou-se que o condomínio dispõe de uma potência de {fmt(p_disp_entrada_kva)} kVA na entrada de energia. Para garantir maior segurança e confiabilidade ao sistema elétrico, recomenda-se a utilização de até 80% desse valor ({fmt(p_disp_entrada_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema. A demanda disponível permite a utilização simultânea de {qtd_geral_9k} aparelhos de ar condicionado de 9.000 BTU/h, {qtd_geral_12k} aparelhos de 12.000 BTU/h, {qtd_geral_18k} aparelhos de 18.000 BTU/h ou, alternativamente, {qtd_geral_24k} aparelhos de 24.000 BTU/h."
             
-            # ADM AC (Calculado com 100% de p_disp_adm_kva para 9k, 12k, 18k e 24k BTU/h)
+            # ADM AC
             qtd_adm_9k = int(p_disp_adm_kva // 1.0) if p_disp_adm_kva > 0 else 0
             qtd_adm_12k = int(p_disp_adm_kva // 1.2) if p_disp_adm_kva > 0 else 0
             qtd_adm_18k = int(p_disp_adm_kva // 1.6) if p_disp_adm_kva > 0 else 0
@@ -1090,7 +1145,7 @@ with tab4:
             
             paragrafo_adm = f"De forma similar, o quadro administrativo apresenta uma potência disponível de aproximadamente {fmt(p_disp_adm_kva)} kVA. Sugere-se, pelos mesmos critérios de segurança operacional, limitar o uso a até 80% dessa capacidade ({fmt(p_disp_adm_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema. A demanda disponível permite a utilização simultânea de {qtd_adm_9k} aparelhos de ar condicionado de 9.000 BTU/h, {qtd_adm_12k} aparelhos de 12.000 BTU/h, {qtd_adm_18k} aparelhos de 18.000 BTU/h ou, alternativamente, {qtd_adm_24k} aparelhos de 24.000 BTU/h instalados diretamente, ou em quadros derivados, do quadro administrativo."
 
-            # Medidores AC (Calculado com 100% de p_disp_med_kva para 9k, 12k, 18k e 24k BTU/h)
+            # Medidores AC
             qtd_med_9k = int(p_disp_med_kva // 1.0) if p_disp_med_kva > 0 else 0
             qtd_med_12k = int(p_disp_med_kva // 1.2) if p_disp_med_kva > 0 else 0
             qtd_med_18k = int(p_disp_med_kva // 1.6) if p_disp_med_kva > 0 else 0
@@ -1098,21 +1153,94 @@ with tab4:
             
             paragrafo_med = f"Adicionalmente, as caixas com {int(x_medidores)} medidores apresentam uma potência disponível de aproximadamente {fmt(p_disp_med_kva)} kVA. A demanda disponível permite a utilização simultânea de {qtd_med_9k} aparelhos de ar condicionado de 9.000 BTU/h, {qtd_med_12k} aparelhos de 12.000 BTU/h, {qtd_med_18k} aparelhos de 18.000 BTU/h ou, alternativamente, {qtd_med_24k} aparelhos de 24.000 BTU/h nas caixas dos medidores."
 
-        else:
-            # Geral VE (Mantido sem alterações)
+        elif sigla_geral == "VE":
+            # Geral VE
             qtd_geral_74 = int(p_disp_entrada_kva // 7.4) if p_disp_entrada_kva > 0 else 0
             qtd_geral_37 = int(p_disp_entrada_kva // 3.7) if p_disp_entrada_kva > 0 else 0
             paragrafo_geral = f"De acordo com as medições realizadas, verificou-se que o condomínio dispõe de uma potência de {fmt(p_disp_entrada_kva)} kVA na entrada de energia. Para garantir maior segurança e confiabilidade ao sistema elétrico, recomenda-se a utilização de até 80% desse valor ({fmt(p_disp_entrada_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema. Se o sistema de gerenciamento de carga for desconsiderado, a demanda disponível permite a utilização simultânea de {qtd_geral_74} carregadores veiculares de 7400W, ou alternativamente, {qtd_geral_37} carregadores de 3700W em um quadro novo, a instalar derivado da caixa seccionadora."
 
-            # ADM VE (Mantido sem alterações)
+            # ADM VE
             qtd_adm_74 = int(p_disp_adm_kva // 7.4) if p_disp_adm_kva > 0 else 0
             qtd_adm_37 = int(p_disp_adm_kva // 3.7) if p_disp_adm_kva > 0 else 0
             paragrafo_adm = f"De forma similar, o quadro administrativo apresenta uma potência disponível de aproximadamente {fmt(p_disp_adm_kva)} kVA. Sugere-se, pelos mesmos critérios de segurança operacional, limitar o uso a até 80% dessa capacidade ({fmt(p_disp_adm_80)} kVA), mantendo uma reserva técnica próxima de 20% para suportar eventuais incrementos de demanda sem comprometer o desempenho do sistema. Se o sistema de gerenciamento de carga for desconsiderado, a demanda disponível permite a utilização simultânea de {qtd_adm_74} carregadores veiculares de 7400W, ou alternativamente, {qtd_adm_37} carregadores de 3700W instalados diretamente, ou em quadros derivados, do quadro administrativo."
 
-            # Medidores VE (Mantido sem alterações)
+            # Medidores VE
             qtd_med_74 = int(p_disp_med_kva // 7.4) if p_disp_med_kva > 0 else 0
             qtd_med_37 = int(p_disp_med_kva // 3.7) if p_disp_med_kva > 0 else 0
             paragrafo_med = f"Adicionalmente, as caixas com {int(x_medidores)} medidores apresentam uma potência disponível de aproximadamente {fmt(p_disp_med_kva)} kVA. Se o sistema de gerenciamento de carga for desconsiderado, a demanda disponível permite a utilização simultânea de {qtd_med_74} carregadores veiculares de 7400W, ou alternativamente, {qtd_med_37} carregadores de 3700W nas caixas dos medidores."
+
+        else: # AC+VE
+            # 1. ENTRADA DE ENERGIA (GERAL)
+            # Extremos (0 VE ou 0 AC)
+            geral_ac_extremo_12k = int(p_disp_entrada_kva // 1.2)
+            geral_ve_extremo_74 = int(p_disp_entrada_kva // 7.4)
+            geral_ve_extremo_37 = int(p_disp_entrada_kva // 3.7)
+            
+            # Cenário Misto: 2 ACs por unidade no total de apartamentos
+            pot_2ac_12k_tot = total_unidades * (2 * 1.2)
+            pot_2ac_18k_tot = total_unidades * (2 * 1.6)
+            
+            p_sobra_geral_12k = max(0.0, p_disp_entrada_kva - pot_2ac_12k_tot)
+            p_sobra_geral_18k = max(0.0, p_disp_entrada_kva - pot_2ac_18k_tot)
+            
+            geral_ve_misto_12k_74 = int(p_sobra_geral_12k // 7.4)
+            geral_ve_misto_12k_37 = int(p_sobra_geral_12k // 3.7)
+            geral_ve_misto_18k_74 = int(p_sobra_geral_18k // 7.4)
+            geral_ve_misto_18k_37 = int(p_sobra_geral_18k // 3.7)
+
+            paragrafo_geral = f"De acordo com as medições realizadas na Entrada de Energia, verificou-se uma potência disponível de {fmt(p_disp_entrada_kva)} kVA (com limite de segurança a 80% em {fmt(p_disp_entrada_80)} kVA). " \
+                              f"Em cenários isolados, se nenhum carregador veicular for instalado, é possível alimentar até {geral_ac_extremo_12k} aparelhos de ar condicionado de 12.000 BTU/h. Por outro lado, caso nenhum ar condicionado seja instalado, o sistema suporta até {geral_ve_extremo_74} carregadores de 7,4 kW (ou {geral_ve_extremo_37} de 3,7 kW).\n" \
+                              f"Em cenários de convivência combinada (AC+VE) considerando a totalidade de {int(total_unidades)} unidades do condomínio:\n" \
+                              f"• Com 02 aparelhos de 12.000 BTU/h por unidade (demanda acumulada de {fmt(pot_2ac_12k_tot)} kW), restam {fmt(p_sobra_geral_12k)} kW disponíveis, permitindo a instalação de {geral_ve_misto_12k_74} carregadores de 7,4 kW (ou {geral_ve_misto_12k_37} de 3,7 kW).\n" \
+                              f"• Com 02 aparelhos de 18.000 BTU/h por unidade (demanda acumulada de {fmt(pot_2ac_18k_tot)} kW), restam {fmt(p_sobra_geral_18k)} kW disponíveis, permitindo a instalação de {geral_ve_misto_18k_74} carregadores de 7,4 kW (ou {geral_ve_misto_18k_37} de 3,7 kW)."
+
+            # 2. CAIXA DE MEDIDORES
+            # Extremos (0 VE ou 0 AC)
+            med_ac_extremo_12k = int(p_disp_med_kva // 1.2)
+            med_ve_extremo_74 = int(p_disp_med_kva // 7.4)
+            med_ve_extremo_37 = int(p_disp_med_kva // 3.7)
+
+            # Cenário Misto: 2 ACs por unidade da caixa
+            pot_2ac_12k_cx = x_medidores * (2 * 1.2)
+            pot_2ac_18k_cx = x_medidores * (2 * 1.6)
+
+            p_sobra_med_12k = max(0.0, p_disp_med_kva - pot_2ac_12k_cx)
+            p_sobra_med_18k = max(0.0, p_disp_med_kva - pot_2ac_18k_cx)
+
+            med_ve_misto_12k_74 = int(p_sobra_med_12k // 7.4)
+            med_ve_misto_12k_37 = int(p_sobra_med_12k // 3.7)
+            med_ve_misto_18k_74 = int(p_sobra_med_18k // 7.4)
+            med_ve_misto_18k_37 = int(p_sobra_med_18k // 3.7)
+
+            paragrafo_med = f"Na Caixa de Medidores (calculada para {int(x_medidores)} unidades), a potência disponível é de {fmt(p_disp_med_kva)} kVA (80% em {fmt(p_disp_med_80)} kVA). " \
+                            f"Se nenhum carregador for instalado, a caixa comporta até {med_ac_extremo_12k} aparelhos de 12.000 BTU/h. Se nenhum ar condicionado for instalado, suporta até {med_ve_extremo_74} carregadores de 7,4 kW (ou {med_ve_extremo_37} de 3,7 kW).\n" \
+                            f"Para o cenário misto na caixa seccionadora analisada:\n" \
+                            f"• Considerando 02 aparelhos de 12.000 BTU/h por unidade da caixa ({fmt(pot_2ac_12k_cx)} kW), restam {fmt(p_sobra_med_12k)} kW, possibilitando {med_ve_misto_12k_74} carregadores de 7,4 kW (ou {med_ve_misto_12k_37} de 3,7 kW).\n" \
+                            f"• Considerando 02 aparelhos de 18.000 BTU/h por unidade da caixa ({fmt(pot_2ac_18k_cx)} kW), restam {fmt(p_sobra_med_18k)} kW, possibilitando {med_ve_misto_18k_74} carregadores de 7,4 kW (ou {med_ve_misto_18k_37} de 3,7 kW)."
+
+            # 3. QUADRO ADMINISTRATIVO
+            # Extremos (0 VE ou 0 AC)
+            adm_ac_extremo_12k = int(p_disp_adm_kva // 1.2)
+            adm_ve_extremo_74 = int(p_disp_adm_kva // 7.4)
+            adm_ve_extremo_37 = int(p_disp_adm_kva // 3.7)
+
+            # Misto: 5 máquinas de AC
+            pot_5ac_12k = 5 * 1.2 # 6 kW
+            pot_5ac_18k = 5 * 1.6 # 8 kW
+
+            p_sobra_adm_12k = max(0.0, p_disp_adm_kva - pot_5ac_12k)
+            p_sobra_adm_18k = max(0.0, p_disp_adm_kva - pot_5ac_18k)
+
+            adm_ve_misto_12k_74 = int(p_sobra_adm_12k // 7.4)
+            adm_ve_misto_12k_37 = int(p_sobra_adm_12k // 3.7)
+            adm_ve_misto_18k_74 = int(p_sobra_adm_18k // 7.4)
+            adm_ve_misto_18k_37 = int(p_sobra_adm_18k // 3.7)
+
+            paragrafo_adm = f"No Quadro Administrativo, verifica-se uma potência disponível de {fmt(p_disp_adm_kva)} kVA (80% em {fmt(p_disp_adm_80)} kVA). " \
+                            f"Isoladamente, suporta até {adm_ac_extremo_12k} aparelhos de 12.000 BTU/h (sem VEs) ou até {adm_ve_extremo_74} carregadores de 7,4 kW (ou {adm_ve_extremo_37} de 3,7 kW, sem ACs).\n" \
+                            f"Para a infraestrutura da área comum, considerando a instalação fixa de 5 máquinas de ar condicionado:\n" \
+                            f"• Com 5 aparelhos de 12.000 BTU/h (demanda de 6,0 kW), restam {fmt(p_sobra_adm_12k)} kW disponíveis, permitindo {adm_ve_misto_12k_74} carregadores de 7,4 kW (ou {adm_ve_misto_12k_37} de 3,7 kW).\n" \
+                            f"• Com 5 aparelhos de 18.000 BTU/h (demanda de 8,0 kW), restam {fmt(p_sobra_adm_18k)} kW disponíveis, permitindo {adm_ve_misto_18k_74} carregadores de 7,4 kW (ou {adm_ve_misto_18k_37} de 3,7 kW)."
 
         texto_laudo = f"{paragrafo_geral}\n\n{paragrafo_adm}\n\n{paragrafo_med}"
 
