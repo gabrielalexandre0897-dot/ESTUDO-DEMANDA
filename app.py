@@ -1230,7 +1230,7 @@ with tab4:
             med_ve_misto_12k_74 = int(p_sobra_med_12k // 7.4)
             med_ve_misto_12k_37 = int(p_sobra_med_12k // 3.7)
             med_ve_misto_18k_74 = int(p_sobra_med_18k // 7.4)
-            med_ve_misto_18k_37 = int(p_sobra_med_18k // 37)
+            med_ve_misto_18k_37 = int(p_sobra_med_18k // 3.7)
 
             paragrafo_med = f"Adicionalmente, as caixas com {int(x_medidores)} medidores apresentam uma potência disponível de aproximadamente {fmt(p_disp_med_kva)} kVA. " \
                             f"Se nenhum carregador for instalado, a caixa comporta até {med_ac_extremo_12k} aparelhos de 12.000 BTU/h, ou {med_ac_extremo_18k} de 18.000 BTU/h. Se nenhum ar condicionado for instalado, suporta até {med_ve_extremo_74} carregadores de 7400W, ou {med_ve_extremo_37} de 3700W.\n" \
