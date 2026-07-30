@@ -333,15 +333,20 @@ if st.sidebar.button("🚪 Sair (Logout)", use_container_width=True):
     st.rerun()
 
 with st.sidebar.expander("🔑 Alterar Minha Senha"):
-    st_s_atual = st.text_input("Senha Atual:", type="password", key="m_s_atual")
-    st_s_nova = st.text_input("Nova Senha:", type="password", key="m_s_nova")
-    if st.button("Atualizar Senha", use_container_width=True):
-        if not st_s_atual or not st_s_nova:
-            st.error("Preencha a senha atual e a nova senha.")
-        else:
-            ok_s, msg_s = alterar_senha_usuario(st.session_state['username'], st_s_atual, st_s_nova)
-            if ok_s: st.success(msg_s)
-            else: st.error(msg_s)
+    with st.form("form_alterar_senha", clear_on_submit=True):
+        st_s_atual = st.text_input("Senha Atual:", type="password", key="m_s_atual")
+        st_s_nova = st.text_input("Nova Senha:", type="password", key="m_s_nova")
+        btn_mudar_senha = st.form_submit_button("Atualizar Senha", use_container_width=True)
+        
+        if btn_mudar_senha:
+            if not st_s_atual or not st_s_nova:
+                st.error("Preencha a senha atual e a nova senha.")
+            else:
+                ok_s, msg_s = alterar_senha_usuario(st.session_state['username'], st_s_atual, st_s_nova)
+                if ok_s: 
+                    st.success(msg_s)
+                else: 
+                    st.error(msg_s)
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 📅 Relatórios Mensais")
