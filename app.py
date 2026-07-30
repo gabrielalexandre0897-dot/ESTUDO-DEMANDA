@@ -64,6 +64,9 @@ st.markdown("""
 # --- CONFIGURAÇÃO DE BANCO DE DADOS SQLITE ---
 DB_NAME = "banco_usuarios_relatorios.db"
 
+def hash_password(password):
+    return hashlib.sha256(password.strip().encode()).hexdigest()
+
 def init_db():
     try:
         conn = sqlite3.connect(DB_NAME)
@@ -80,7 +83,7 @@ def init_db():
         conn.commit()
         cursor.execute("SELECT COUNT(*) FROM usuarios")
         if cursor.fetchone()[0] == 0:
-            hashed_pw = hashlib.sha256("admin123".encode()).hexdigest()
+            hashed_pw = hash_password("admin123")
             cursor.execute("INSERT INTO usuarios (username, password, is_admin) VALUES (?, ?, ?)", ("admin", hashed_pw, 1))
             conn.commit()
     except Exception as e:
@@ -90,11 +93,9 @@ def init_db():
 
 init_db()
 
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
-
 def verificar_login(username, password):
     try:
+        username = username.strip()
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
         cursor.execute("SELECT password, is_admin FROM usuarios WHERE username = ?", (username,))
@@ -106,7 +107,15 @@ def verificar_login(username, password):
         pass
     return False, False
 
-def alterar_senha_usuario(username, nova_senha):
+def alterar_senha_usuario(username, senha_atual, nova_senha):
+    username = username.strip()
+    if not nova_senha.strip():
+        return False, "A nova senha não pode estar em branco."
+        
+    ok, _ = verificar_login(username, senha_atual)
+    if not ok:
+        return False, "Senha atual incorreta."
+        
     try:
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
@@ -118,7 +127,8 @@ def alterar_senha_usuario(username, nova_senha):
         return False, f"Erro ao alterar senha: {e}"
 
 def cadastrar_usuario(username, password, is_admin=0):
-    if not username or not password:
+    username = username.strip()
+    if not username or not password.strip():
         return False, "Preencha usuário e senha."
     try:
         conn = sqlite3.connect(DB_NAME)
@@ -135,6 +145,7 @@ def cadastrar_usuario(username, password, is_admin=0):
         return False, f"Erro ao cadastrar: {e}"
 
 def excluir_usuario(username):
+    username = username.strip()
     if username == "admin":
         return False, "O usuário administrador principal não pode ser excluído."
     try:
@@ -162,6 +173,7 @@ def listar_usuarios():
 def salvar_relatorio_db(username, nome_relatorio, estado_dict):
     try:
         import pickle
+        username = username.strip()
         dados_blob = pickle.dumps(estado_dict)
         data_atual = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         conn = sqlite3.connect(DB_NAME)
@@ -184,7 +196,7 @@ def carregar_relatorio_db(username, nome_relatorio):
         import pickle
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
-        cursor.execute("SELECT dados_pickle FROM relatorios WHERE username = ? AND nome_relatorio = ?", (username, nome_relatorio))
+        cursor.execute("SELECT dados_pickle FROM relatorios WHERE username = ? AND nome_relatorio = ?", (username.strip(), nome_relatorio))
         row = cursor.fetchone()
         conn.close()
         if row:
@@ -197,7 +209,7 @@ def excluir_relatorio_db(username, nome_relatorio):
     try:
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM relatorios WHERE username = ? AND nome_relatorio = ?", (username, nome_relatorio))
+        cursor.execute("DELETE FROM relatorios WHERE username = ? AND nome_relatorio = ?", (username.strip(), nome_relatorio))
         conn.commit()
         conn.close()
         return True
@@ -208,7 +220,7 @@ def renomear_relatorio_db(username, nome_antigo, nome_novo):
     try:
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
-        cursor.execute("UPDATE relatorios SET nome_relatorio = ? WHERE username = ? AND nome_relatorio = ?", (nome_novo, username, nome_antigo))
+        cursor.execute("UPDATE relatorios SET nome_relatorio = ? WHERE username = ? AND nome_relatorio = ?", (nome_novo, username.strip(), nome_antigo))
         conn.commit()
         conn.close()
         return True
@@ -221,7 +233,7 @@ def listar_meses_relatorios(username=None):
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
         if username:
-            cursor.execute("SELECT DISTINCT strftime('%m/%Y', data_criacao) FROM relatorios WHERE username = ? AND data_criacao IS NOT NULL ORDER BY data_criacao DESC", (username,))
+            cursor.execute("SELECT DISTINCT strftime('%m/%Y', data_criacao) FROM relatorios WHERE username = ? AND data_criacao IS NOT NULL ORDER BY data_criacao DESC", (username.strip(),))
         else:
             cursor.execute("SELECT DISTINCT strftime('%m/%Y', data_criacao) FROM relatorios WHERE data_criacao IS NOT NULL ORDER BY data_criacao DESC")
         rows = cursor.fetchall()
@@ -241,7 +253,7 @@ def listar_relatorios_db(username=None, mes_ano=None):
         
         if username:
             query += " AND username = ?"
-            params.append(username)
+            params.append(username.strip())
             
         if mes_ano:
             query += " AND strftime('%m/%Y', data_criacao) = ?"
@@ -271,7 +283,7 @@ if not st.session_state["logged_in"]:
         if submit_login:
             ok, admin_status = verificar_login(user_input, pass_input)
             if ok:
-                st.session_state.update({"logged_in": True, "username": user_input, "is_admin": admin_status})
+                st.session_state.update({"logged_in": True, "username": user_input.strip(), "is_admin": admin_status})
                 st.success("Login efetuado com sucesso!")
                 st.rerun()
             else:
@@ -324,12 +336,12 @@ with st.sidebar.expander("🔑 Alterar Minha Senha"):
     st_s_atual = st.text_input("Senha Atual:", type="password", key="m_s_atual")
     st_s_nova = st.text_input("Nova Senha:", type="password", key="m_s_nova")
     if st.button("Atualizar Senha", use_container_width=True):
-        if verificar_login(st.session_state['username'], st_s_atual)[0]:
-            ok_s, msg_s = alterar_senha_usuario(st.session_state['username'], st_s_nova)
+        if not st_s_atual or not st_s_nova:
+            st.error("Preencha a senha atual e a nova senha.")
+        else:
+            ok_s, msg_s = alterar_senha_usuario(st.session_state['username'], st_s_atual, st_s_nova)
             if ok_s: st.success(msg_s)
             else: st.error(msg_s)
-        else:
-            st.error("Senha atual incorreta.")
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 📅 Relatórios Mensais")
@@ -1299,7 +1311,7 @@ with tab4:
             novo_nome_input = st.text_input("Novo Nome do Relatório:", value=n_atual, key="ren_nome_inp")
             pass_confirm_ren = st.text_input("Sua Senha para Confirmar Renomeação:", type="password", key="ren_pass_inp")
             if st.button("Confirmar Alteração de Nome"):
-                if not novo_nome_input:
+                if not novo_nome_input.strip():
                     st.error("Digite um nome válido.")
                 elif not verificar_login(st.session_state["username"], pass_confirm_ren)[0]:
                     st.error("Senha incorreta!")
