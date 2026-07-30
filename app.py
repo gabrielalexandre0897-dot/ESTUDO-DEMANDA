@@ -6,6 +6,7 @@ import copy
 import sqlite3
 import hashlib
 import os
+import datetime
 
 # Configuração da Página
 st.set_page_config(page_title="Estudo de Demanda - Veículos Elétricos & Ar Condicionado", page_icon="⚡", layout="wide")
@@ -68,7 +69,14 @@ def init_db():
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
         cursor.execute('''CREATE TABLE IF NOT EXISTS usuarios (username TEXT PRIMARY KEY, password TEXT NOT NULL, is_admin INTEGER NOT NULL)''')
-        cursor.execute('''CREATE TABLE IF NOT EXISTS relatorios (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, nome_relatorio TEXT NOT NULL, dados_pickle BLOB NOT NULL)''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS relatorios (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, nome_relatorio TEXT NOT NULL, dados_pickle BLOB NOT NULL, data_criacao TEXT)''')
+        
+        # Garante que a coluna data_criacao existe caso o banco já tenha sido criado antes
+        cursor.execute("PRAGMA table_info(relatorios)")
+        colunas = [col[1] for col in cursor.fetchall()]
+        if "data_criacao" not in colunas:
+            cursor.execute("ALTER TABLE relatorios ADD COLUMN data_criacao TEXT")
+
         conn.commit()
         cursor.execute("SELECT COUNT(*) FROM usuarios")
         if cursor.fetchone()[0] == 0:
@@ -155,14 +163,15 @@ def salvar_relatorio_db(username, nome_relatorio, estado_dict):
     try:
         import pickle
         dados_blob = pickle.dumps(estado_dict)
+        data_atual = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
         cursor.execute("SELECT id FROM relatorios WHERE username = ? AND nome_relatorio = ?", (username, nome_relatorio))
         row = cursor.fetchone()
         if row:
-            cursor.execute("UPDATE relatorios SET dados_pickle = ? WHERE id = ?", (dados_blob, row[0]))
+            cursor.execute("UPDATE relatorios SET dados_pickle = ?, data_criacao = ? WHERE id = ?", (dados_blob, data_atual, row[0]))
         else:
-            cursor.execute("INSERT INTO relatorios (username, nome_relatorio, dados_pickle) VALUES (?, ?, ?)", (username, nome_relatorio, dados_blob))
+            cursor.execute("INSERT INTO relatorios (username, nome_relatorio, dados_pickle, data_criacao) VALUES (?, ?, ?, ?)", (username, nome_relatorio, dados_blob, data_atual))
         conn.commit()
         conn.close()
         return True
@@ -206,14 +215,41 @@ def renomear_relatorio_db(username, nome_antigo, nome_novo):
     except:
         return False
 
-def listar_relatorios_db(username=None):
+def listar_meses_relatorios(username=None):
+    """Retorna os meses/anos únicos em que há relatórios cadastrados (Ex: '08/2024')."""
     try:
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
         if username:
-            cursor.execute("SELECT nome_relatorio, username FROM relatorios WHERE username = ?", (username,))
+            cursor.execute("SELECT DISTINCT strftime('%m/%Y', data_criacao) FROM relatorios WHERE username = ? AND data_criacao IS NOT NULL ORDER BY data_criacao DESC", (username,))
         else:
-            cursor.execute("SELECT nome_relatorio, username FROM relatorios")
+            cursor.execute("SELECT DISTINCT strftime('%m/%Y', data_criacao) FROM relatorios WHERE data_criacao IS NOT NULL ORDER BY data_criacao DESC")
+        rows = cursor.fetchall()
+        conn.close()
+        return [r[0] for r in rows if r[0] is not None]
+    except:
+        return []
+
+def listar_relatorios_db(username=None, mes_ano=None):
+    """Lista os relatórios filtrados opcionalmente por mês/ano no formato 'MM/YYYY'."""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        
+        query = "SELECT nome_relatorio, username, data_criacao FROM relatorios WHERE 1=1"
+        params = []
+        
+        if username:
+            query += " AND username = ?"
+            params.append(username)
+            
+        if mes_ano:
+            query += " AND strftime('%m/%Y', data_criacao) = ?"
+            params.append(mes_ano)
+            
+        query += " ORDER BY id DESC"
+        
+        cursor.execute(query, params)
         rows = cursor.fetchall()
         conn.close()
         return rows
@@ -296,7 +332,16 @@ with st.sidebar.expander("🔑 Alterar Minha Senha"):
             st.error("Senha atual incorreta.")
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 💾 Gerenciador de Relatórios")
+st.sidebar.markdown("### 📅 Relatórios Mensais")
+
+user_filtro = None if st.session_state["is_admin"] else st.session_state["username"]
+meses_disponiveis = listar_meses_relatorios(user_filtro)
+
+if not meses_disponiveis:
+    mes_atual_str = datetime.datetime.now().strftime("%m/%Y")
+    meses_disponiveis = [mes_atual_str]
+
+mes_selecionado = st.sidebar.selectbox("Selecione o Mês:", meses_disponiveis, key="sb_mes_filtro")
 
 if st.sidebar.button("➕ Criar Novo Relatório", type="primary", use_container_width=True):
     st.session_state["show_modal_novo_relatorio"] = True
@@ -323,9 +368,6 @@ if st.session_state.get("show_modal_novo_relatorio", False):
             st.session_state["show_modal_novo_relatorio"] = False
             st.rerun()
     dialog_novo_relatorio()
-
-st.sidebar.markdown("---")
-lista_db = listar_relatorios_db(None if st.session_state["is_admin"] else st.session_state["username"])
 
 # MODAIS DE CONFIRMAÇÃO DO ADMIN PARA EXCLUSÃO
 if st.session_state.get("show_modal_del_rel", False):
@@ -373,8 +415,13 @@ if st.session_state.get("show_modal_del_usr", False):
             st.rerun()
     dialog_del_usr()
 
+st.sidebar.markdown("---")
+lista_db = listar_relatorios_db(user_filtro, mes_ano=mes_selecionado)
+
+st.sidebar.markdown(f"📂 **Relatórios de {mes_selecionado}:**")
+
 if not lista_db:
-    st.sidebar.info("Nenhum relatório salvo no momento.")
+    st.sidebar.info(f"Nenhum relatório encontrado em {mes_selecionado}.")
 else:
     opcoes_map = {f"{i[0]} (por: {i[1]})" if st.session_state["is_admin"] else i[0]: i for i in lista_db}
     selecao = st.sidebar.selectbox("Selecione um relatório:", list(opcoes_map.keys()), key="selectbox_historico")
@@ -386,7 +433,7 @@ else:
         if st.button("📂 Carregar", use_container_width=True, key="btn_load_action"):
             report_data = carregar_relatorio_db(dono, rel_selecionado)
             if report_data:
-                keys_to_keep = ["logged_in", "username", "is_admin", "reset_key", "selectbox_historico"]
+                keys_to_keep = ["logged_in", "username", "is_admin", "reset_key", "selectbox_historico", "sb_mes_filtro"]
                 for k in list(st.session_state.keys()):
                     if k not in keys_to_keep: del st.session_state[k]
                 for k, v in report_data.items(): st.session_state[k] = copy.deepcopy(v)
@@ -1273,7 +1320,7 @@ with tab4:
                 st.warning("⚠️ O relatório precisa ter um nome antes de ser salvo.")
             else:
                 est_salvo = {}
-                keys_to_skip = ["logged_in", "username", "is_admin", "reset_key", "selectbox_historico"]
+                keys_to_skip = ["logged_in", "username", "is_admin", "reset_key", "selectbox_historico", "sb_mes_filtro"]
                 for chave, valor in st.session_state.items():
                     if chave not in keys_to_skip and not chave.startswith("FormSubmitter") and not chave.startswith("file_") and not chave.startswith("btn_") and not chave.startswith("adm_") and not chave.startswith("show_modal_"):
                         est_salvo[chave] = copy.deepcopy(valor)
