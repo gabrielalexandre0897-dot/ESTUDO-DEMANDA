@@ -11,22 +11,6 @@ import datetime
 # Configuração da Página
 st.set_page_config(page_title="Estudo de Demanda - Veículos Elétricos & Ar Condicionado", page_icon="⚡", layout="wide")
 
-# =====================================================================
-# CONFIGURAÇÃO DE EXPORTAÇÃO AJUSTADA
-# =====================================================================
-CONFIG_IMG_TABELA = {
-    "toImageButtonOptions": {"format": "png", "width": 1400, "height": 380, "scale": 3},
-    "displayModeBar": True
-}
-CONFIG_IMG_TABELA_COMP = {
-    "toImageButtonOptions": {"format": "png", "width": 1400, "height": 230, "scale": 3},
-    "displayModeBar": True
-}
-CONFIG_IMG_GRAFICO = {
-    "toImageButtonOptions": {"format": "png", "width": 1400, "height": 380, "scale": 3},
-    "displayModeBar": True
-}
-
 # Estilização CSS customizada
 st.markdown("""
 <style>
@@ -61,6 +45,23 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Função auxiliar para gerar configuração de download de imagem com nome personalizado
+def get_config_img(nome_arquivo):
+    # Trata nome do arquivo removendo caracteres inválidos se houver
+    nome_limpo = "".join(c for c in nome_arquivo if c.isalnum() or c in (" ", "_", "-")).strip().replace(" ", "_")
+    if not nome_limpo:
+        nome_limpo = "imagem_exportada"
+    return {
+        "toImageButtonOptions": {
+            "format": "png",
+            "filename": nome_limpo,
+            "width": 1400,
+            "height": 450,
+            "scale": 3
+        },
+        "displayModeBar": True
+    }
+
 # --- CONFIGURAÇÃO DE BANCO DE DADOS SQLITE ---
 DB_NAME = "banco_usuarios_relatorios.db"
 
@@ -74,7 +75,6 @@ def init_db():
         cursor.execute('''CREATE TABLE IF NOT EXISTS usuarios (username TEXT PRIMARY KEY, password TEXT NOT NULL, is_admin INTEGER NOT NULL)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS relatorios (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, nome_relatorio TEXT NOT NULL, dados_pickle BLOB NOT NULL, data_criacao TEXT)''')
         
-        # Garante que a coluna data_criacao existe caso o banco já tenha sido criado antes
         cursor.execute("PRAGMA table_info(relatorios)")
         colunas = [col[1] for col in cursor.fetchall()]
         if "data_criacao" not in colunas:
@@ -228,7 +228,6 @@ def renomear_relatorio_db(username, nome_antigo, nome_novo):
         return False
 
 def listar_meses_relatorios(username=None):
-    """Retorna os meses/anos únicos em que há relatórios cadastrados (Ex: '08/2024')."""
     try:
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
@@ -243,24 +242,18 @@ def listar_meses_relatorios(username=None):
         return []
 
 def listar_relatorios_db(username=None, mes_ano=None):
-    """Lista os relatórios filtrados opcionalmente por mês/ano no formato 'MM/YYYY'."""
     try:
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
-        
         query = "SELECT nome_relatorio, username, data_criacao FROM relatorios WHERE 1=1"
         params = []
-        
         if username:
             query += " AND username = ?"
             params.append(username.strip())
-            
         if mes_ano:
             query += " AND strftime('%m/%Y', data_criacao) = ?"
             params.append(mes_ano)
-            
         query += " ORDER BY id DESC"
-        
         cursor.execute(query, params)
         rows = cursor.fetchall()
         conn.close()
@@ -675,6 +668,9 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
     st.markdown("---")
     st.subheader("📋 Quadro de Potências e Correntes - Entrada de Energia")
     
+    col_n1, col_n2 = st.columns([2, 1])
+    nome_img_tab1 = col_n2.text_input("Nome da imagem ao baixar:", value="Tabela_Entrada_Energia", key="nome_img_tab1")
+
     fig_tab = go.Figure(data=[go.Table(
         columnwidth=[3.3, 1.3, 1.3, 1.3, 2.3], 
         header=dict(values=headers_tabela, fill_color='#1E3A8A', align='center', font=dict(color='white', size=21, family="Arial Black")),
@@ -684,15 +680,16 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
         title=dict(text="<b>Quadro de Potências e Correntes - Entrada de Energia</b>", font=dict(size=24, color='#000000')),
         margin=dict(l=5, r=5, t=55, b=5), height=380
     ) 
-    st.plotly_chart(fig_tab, use_container_width=True, config=CONFIG_IMG_TABELA)
+    st.plotly_chart(fig_tab, use_container_width=True, config=get_config_img(nome_img_tab1))
 
     st.markdown("---")
     st.subheader(f"📈 Gráfico de Evolução de Correntes (Consumo Atual vs Projeção com {sigla})")
     
-    col_cb1, col_cb2, col_cb3 = st.columns(3)
+    col_cb1, col_cb2, col_cb3, col_name_g1 = st.columns([1, 1, 1, 2])
     show_r = col_cb1.checkbox("Exibir Fases R", value=True, key="chk_r_geral")
     show_s = col_cb2.checkbox("Exibir Fases S", value=True, key="chk_s_geral")
     show_t = col_cb3.checkbox("Exibir Fases T", value=True, key="chk_t_geral")
+    nome_img_graf1 = col_name_g1.text_input("Nome da imagem ao baixar:", value="Grafico_Entrada_Energia", key="nome_img_graf1")
 
     fig = go.Figure()
     if show_r:
@@ -705,17 +702,17 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
         fig.add_trace(go.Scatter(y=t_base_total_serie, mode='lines', name='Fase T (Atual)', line=dict(color='#6EE7B7', width=2, dash='dot')))
         fig.add_trace(go.Scatter(y=t_tot_serie, mode='lines+markers', name=f'Fase T (Total + {sigla})', line=dict(color='#059669', width=4)))
 
-    fig.add_hline(y=i_cond_tot, line_dash="dash", line_color="#D97706", line_width=3, annotation_text=f"<b>Limite Cabos ({i_cond_tot}A)</b>", annotation_font=dict(size=18, color="#D97706"))
-    fig.add_hline(y=i_prot_tot, line_dash="dot", line_color="#7C3AED", line_width=3, annotation_text=f"<b>Limite Proteção ({i_prot_tot}A)</b>", annotation_font=dict(size=18, color="#7C3AED"))
+    fig.add_hline(y=i_cond_tot, line_dash="dash", line_color="#D97706", line_width=3, annotation_text=f"<b>Limite Cabos ({i_cond_tot}A)</b>", annotation_font=dict(size=16, color="#D97706"))
+    fig.add_hline(y=i_prot_tot, line_dash="dot", line_color="#7C3AED", line_width=3, annotation_text=f"<b>Limite Proteção ({i_prot_tot}A)</b>", annotation_font=dict(size=16, color="#7C3AED"))
 
     fig.update_layout(
-        title=dict(text=f"<b>Perfil de Correntes por Fase - Entrada de Energia</b>", font=dict(size=24, color='#000000')),
-        xaxis=dict(title=dict(text="<b>Amostras / Horários</b>", font=dict(size=19, color='#000000')), tickfont=dict(size=18, color='#000000')),
-        yaxis=dict(title=dict(text="<b>Corrente por Fase (A)</b>", font=dict(size=19, color='#000000')), tickfont=dict(size=18, color='#000000')),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font=dict(size=18, color='#000000'), bgcolor="rgba(255,255,255,0.9)", borderwidth=1),
-        margin=dict(l=5, r=5, t=55, b=5), template="plotly_white", height=450
+        title=dict(text=f"<b>Perfil de Correntes por Fase - Entrada de Energia</b>", font=dict(size=24, color='#000000'), y=0.98, x=0.01, xanchor='left', yanchor='top'),
+        xaxis=dict(title=dict(text="<b>Amostras / Horários</b>", font=dict(size=18, color='#000000')), tickfont=dict(size=16, color='#000000')),
+        yaxis=dict(title=dict(text="<b>Corrente por Fase (A)</b>", font=dict(size=18, color='#000000')), tickfont=dict(size=16, color='#000000')),
+        legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="center", x=0.5, font=dict(size=15, color='#000000'), bgcolor="rgba(255,255,255,0.9)", borderwidth=1),
+        margin=dict(l=10, r=10, t=110, b=10), template="plotly_white", height=480
     )
-    st.plotly_chart(fig, use_container_width=True, config=CONFIG_IMG_GRAFICO)
+    st.plotly_chart(fig, use_container_width=True, config=get_config_img(nome_img_graf1))
 
     ultrapassou_cabo = i_max_pico > i_cond_tot
     ultrapassou_prot = i_max_pico > i_prot_tot
@@ -884,6 +881,9 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
     st.markdown("---")
     st.subheader("📋 Quadro de Potências e Correntes - Quadro Administrativo")
     
+    col_na1, col_na2 = st.columns([2, 1])
+    nome_img_tab2 = col_na2.text_input("Nome da imagem ao baixar:", value="Tabela_Quadro_ADM", key="nome_img_tab2")
+
     fig_tab_a = go.Figure(data=[go.Table(
         columnwidth=[3.3, 1.3, 1.3, 1.3, 2.3],
         header=dict(values=headers_tabela, fill_color='#1E3A8A', align='center', font=dict(color='white', size=21, family="Arial Black")),
@@ -893,15 +893,16 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
         title=dict(text="<b>Quadro de Potências e Correntes - ADM</b>", font=dict(size=24, color='#000000')),
         margin=dict(l=5, r=5, t=55, b=5), height=380
     )
-    st.plotly_chart(fig_tab_a, use_container_width=True, config=CONFIG_IMG_TABELA)
+    st.plotly_chart(fig_tab_a, use_container_width=True, config=get_config_img(nome_img_tab2))
 
     st.markdown("---")
     st.subheader(f"📈 Gráfico de Evolução de Correntes (Consumo Atual vs Projeção com {sigla_a})")
     
-    col_cb1_a, col_cb2_a, col_cb3_a = st.columns(3)
+    col_cb1_a, col_cb2_a, col_cb3_a, col_name_g2 = st.columns([1, 1, 1, 2])
     show_r_a = col_cb1_a.checkbox("Exibir Fases R (ADM)", value=True, key="chk_r_adm")
     show_s_a = col_cb2_a.checkbox("Exibir Fases S (ADM)", value=True, key="chk_s_adm")
     show_t_a = col_cb3_a.checkbox("Exibir Fases T (ADM)", value=True, key="chk_t_adm")
+    nome_img_graf2 = col_name_g2.text_input("Nome da imagem ao baixar:", value="Grafico_Quadro_ADM", key="nome_img_graf2")
 
     fig_a = go.Figure()
     if show_r_a:
@@ -914,17 +915,17 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
         fig_a.add_trace(go.Scatter(y=t_base_total_serie_a, mode='lines', name='Fase T (Atual)', line=dict(color='#6EE7B7', width=2, dash='dot')))
         fig_a.add_trace(go.Scatter(y=t_total_a, mode='lines+markers', name=f'Fase T (Total + {sigla_a})', line=dict(color='#059669', width=4)))
 
-    fig_a.add_hline(y=i_cond_total_a, line_dash="dash", line_color="#D97706", line_width=3, annotation_text=f"<b>Limite Cabos ({i_cond_total_a}A)</b>", annotation_font=dict(size=18, color="#D97706"))
-    fig_a.add_hline(y=i_prot_total_a, line_dash="dot", line_color="#7C3AED", line_width=3, annotation_text=f"<b>Limite Proteção ({i_prot_total_a}A)</b>", annotation_font=dict(size=18, color="#7C3AED"))
+    fig_a.add_hline(y=i_cond_total_a, line_dash="dash", line_color="#D97706", line_width=3, annotation_text=f"<b>Limite Cabos ({i_cond_total_a}A)</b>", annotation_font=dict(size=16, color="#D97706"))
+    fig_a.add_hline(y=i_prot_total_a, line_dash="dot", line_color="#7C3AED", line_width=3, annotation_text=f"<b>Limite Proteção ({i_prot_total_a}A)</b>", annotation_font=dict(size=16, color="#7C3AED"))
 
     fig_a.update_layout(
-        title=dict(text=f"<b>Perfil de Correntes por Fase - ADM</b>", font=dict(size=24, color='#000000')),
-        xaxis=dict(title=dict(text="<b>Amostras / Horários</b>", font=dict(size=19, color='#000000')), tickfont=dict(size=18, color='#000000')),
-        yaxis=dict(title=dict(text="<b>Corrente por Fase (A)</b>", font=dict(size=19, color='#000000')), tickfont=dict(size=18, color='#000000')),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font=dict(size=18, color='#000000'), bgcolor="rgba(255,255,255,0.9)", borderwidth=1),
-        margin=dict(l=5, r=5, t=55, b=5), template="plotly_white", height=450
+        title=dict(text=f"<b>Perfil de Correntes por Fase - ADM</b>", font=dict(size=24, color='#000000'), y=0.98, x=0.01, xanchor='left', yanchor='top'),
+        xaxis=dict(title=dict(text="<b>Amostras / Horários</b>", font=dict(size=18, color='#000000')), tickfont=dict(size=16, color='#000000')),
+        yaxis=dict(title=dict(text="<b>Corrente por Fase (A)</b>", font=dict(size=18, color='#000000')), tickfont=dict(size=16, color='#000000')),
+        legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="center", x=0.5, font=dict(size=15, color='#000000'), bgcolor="rgba(255,255,255,0.9)", borderwidth=1),
+        margin=dict(l=10, r=10, t=110, b=10), template="plotly_white", height=480
     )
-    st.plotly_chart(fig_a, use_container_width=True, config=CONFIG_IMG_GRAFICO)
+    st.plotly_chart(fig_a, use_container_width=True, config=get_config_img(nome_img_graf2))
 
     ultrapassou_cabo_a = i_max_pico_a > i_cond_total_a
     ultrapassou_prot_a = i_max_pico_a > i_prot_total_a
@@ -1090,6 +1091,9 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
     st.markdown("---")
     st.subheader("📋 Quadro de Potências e Correntes - Caixa de Medidores")
     
+    col_nm1, col_nm2 = st.columns([2, 1])
+    nome_img_tab3 = col_nm2.text_input("Nome da imagem ao baixar:", value="Tabela_Caixa_Medidores", key="nome_img_tab3")
+
     fig_tab_m = go.Figure(data=[go.Table(
         columnwidth=[3.3, 1.3, 1.3, 1.3, 2.3],
         header=dict(values=headers_tabela, fill_color='#1E3A8A', align='center', font=dict(color='white', size=21, family="Arial Black")),
@@ -1099,15 +1103,16 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
         title=dict(text="<b>Quadro de Potências e Correntes - Caixa de Medidores</b>", font=dict(size=24, color='#000000')),
         margin=dict(l=5, r=5, t=55, b=5), height=380
     )
-    st.plotly_chart(fig_tab_m, use_container_width=True, config=CONFIG_IMG_TABELA)
+    st.plotly_chart(fig_tab_m, use_container_width=True, config=get_config_img(nome_img_tab3))
 
     st.markdown("---")
     st.subheader(f"📈 Gráfico de Evolução de Correntes (Consumo Proporcional vs Projeção com {sigla_m})")
     
-    col_cb1_m, col_cb2_m, col_cb3_m = st.columns(3)
+    col_cb1_m, col_cb2_m, col_cb3_m, col_name_g3 = st.columns([1, 1, 1, 2])
     show_r_m = col_cb1_m.checkbox("Exibir Fases R (Medidores)", value=True, key="chk_r_med")
     show_s_m = col_cb2_m.checkbox("Exibir Fases S (Medidores)", value=True, key="chk_s_med")
     show_t_m = col_cb3_m.checkbox("Exibir Fases T (Medidores)", value=True, key="chk_t_med")
+    nome_img_graf3 = col_name_g3.text_input("Nome da imagem ao baixar:", value="Grafico_Caixa_Medidores", key="nome_img_graf3")
 
     fig_m = go.Figure()
     if show_r_m:
@@ -1120,17 +1125,17 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
         fig_m.add_trace(go.Scatter(y=serie_t_med*num_cabos_med, mode='lines', name='Fase T (Proporcional)', line=dict(color='#6EE7B7', width=2, dash='dot')))
         fig_m.add_trace(go.Scatter(y=t_total_m, mode='lines+markers', name=f'Fase T (Total + {sigla_m})', line=dict(color='#059669', width=4)))
 
-    fig_m.add_hline(y=i_cond_total_m, line_dash="dash", line_color="#D97706", line_width=3, annotation_text=f"<b>Limite Cabos ({i_cond_total_m}A)</b>", annotation_font=dict(size=18, color="#D97706"))
-    fig_m.add_hline(y=i_prot_total_m, line_dash="dot", line_color="#7C3AED", line_width=3, annotation_text=f"<b>Limite Proteção ({i_prot_total_m}A)</b>", annotation_font=dict(size=18, color="#7C3AED"))
+    fig_m.add_hline(y=i_cond_total_m, line_dash="dash", line_color="#D97706", line_width=3, annotation_text=f"<b>Limite Cabos ({i_cond_total_m}A)</b>", annotation_font=dict(size=16, color="#D97706"))
+    fig_m.add_hline(y=i_prot_total_m, line_dash="dot", line_color="#7C3AED", line_width=3, annotation_text=f"<b>Limite Proteção ({i_prot_total_m}A)</b>", annotation_font=dict(size=16, color="#7C3AED"))
 
     fig_m.update_layout(
-        title=dict(text=f"<b>Perfil de Correntes por Fase - Caixa de Medidores</b>", font=dict(size=24, color='#000000')),
-        xaxis=dict(title=dict(text="<b>Amostras / Horários</b>", font=dict(size=19, color='#000000')), tickfont=dict(size=18, color='#000000')),
-        yaxis=dict(title=dict(text="<b>Corrente por Fase (A)</b>", font=dict(size=19, color='#000000')), tickfont=dict(size=18, color='#000000')),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font=dict(size=18, color='#000000'), bgcolor="rgba(255,255,255,0.9)", borderwidth=1),
-        margin=dict(l=5, r=5, t=55, b=5), template="plotly_white", height=450
+        title=dict(text=f"<b>Perfil de Correntes por Fase - Caixa de Medidores</b>", font=dict(size=24, color='#000000'), y=0.98, x=0.01, xanchor='left', yanchor='top'),
+        xaxis=dict(title=dict(text="<b>Amostras / Horários</b>", font=dict(size=18, color='#000000')), tickfont=dict(size=16, color='#000000')),
+        yaxis=dict(title=dict(text="<b>Corrente por Fase (A)</b>", font=dict(size=18, color='#000000')), tickfont=dict(size=16, color='#000000')),
+        legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="center", x=0.5, font=dict(size=15, color='#000000'), bgcolor="rgba(255,255,255,0.9)", borderwidth=1),
+        margin=dict(l=10, r=10, t=110, b=10), template="plotly_white", height=480
     )
-    st.plotly_chart(fig_m, use_container_width=True, config=CONFIG_IMG_GRAFICO)
+    st.plotly_chart(fig_m, use_container_width=True, config=get_config_img(nome_img_graf3))
 
     ultrapassou_cabo_m = i_max_pico_proj_m > i_cond_total_m
     ultrapassou_prot_m = i_max_pico_proj_m > i_prot_total_m
@@ -1164,6 +1169,9 @@ with tab4:
 
         st.subheader("📊 Quadro Geral Comparativo")
         
+        col_nc1, col_nc2 = st.columns([2, 1])
+        nome_img_comp = col_nc2.text_input("Nome da imagem ao baixar:", value="Quadro_Geral_Comparativo", key="nome_img_comp")
+
         h_comp = ["<b>SETOR ANALISADO</b>", "<b>P. APARENTE (kVA)</b>", "<b>POTÊNCIA DISPONÍVEL NO SISTEMA (kW)</b>"]
         v_comp = [
             ["Entrada de Energia (Geral)", "Quadro Administrativo (ADM)", "Caixa de Medidores"],
@@ -1181,7 +1189,7 @@ with tab4:
             title=dict(text="<b>Quadro Geral Comparativo</b>", font=dict(size=24, color='#000000')),
             margin=dict(l=5, r=5, t=55, b=0), height=220
         )
-        st.plotly_chart(fig_comp, use_container_width=True, config=CONFIG_IMG_TABELA_COMP)
+        st.plotly_chart(fig_comp, use_container_width=True, config=get_config_img(nome_img_comp))
 
         st.markdown("---")
         st.subheader("📄 Texto Oficial do Laudo Técnico (Passe o mouse no canto superior direito para COPIAR)")
