@@ -3,13 +3,26 @@ import pandas as pd
 import plotly.graph_objects as go
 import numpy as np
 import copy
-import sqlite3
 import hashlib
-import os
+import json
 import datetime
+from supabase import create_client, Client
 
 # Configuração da Página
 st.set_page_config(page_title="Estudo de Demanda - Veículos Elétricos & Ar Condicionado", page_icon="⚡", layout="wide")
+
+# --- CONFIGURAÇÃO DO SUPABASE (BANCO DE DADOS GRATUITO E ILIMITADO) ---
+SUPABASE_URL = "https://SUA_URL_AQUI.supabase.co"      # Substitua pela sua URL do Supabase
+SUPABASE_KEY = "SUA_CHAVE_ANON_PUBLIC_AQUI"            # Substitua pela sua API Key (anon/public)
+
+@st.cache_resource
+def init_supabase() -> Client:
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
+
+try:
+    supabase = init_supabase()
+except Exception as e:
+    st.error(f"Erro ao conectar ao Supabase: {e}")
 
 # Estilização CSS customizada
 st.markdown("""
@@ -47,7 +60,6 @@ st.markdown("""
 
 # Função auxiliar para gerar configuração de download de imagem com nome personalizado
 def get_config_img(nome_arquivo):
-    # Trata nome do arquivo removendo caracteres inválidos se houver
     nome_limpo = "".join(c for c in nome_arquivo if c.isalnum() or c in (" ", "_", "-")).strip().replace(" ", "_")
     if not nome_limpo:
         nome_limpo = "imagem_exportada"
@@ -62,204 +74,199 @@ def get_config_img(nome_arquivo):
         "displayModeBar": True
     }
 
-# --- CONFIGURAÇÃO DE BANCO DE DADOS SQLITE ---
-DB_NAME = "banco_usuarios_relatorios.db"
-
+# --- FUNÇÕES DE SEGURANÇA E BIND NUVEM ---
 def hash_password(password):
     return hashlib.sha256(password.strip().encode()).hexdigest()
 
-def init_db():
-    try:
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
-        cursor.execute('''CREATE TABLE IF NOT EXISTS usuarios (username TEXT PRIMARY KEY, password TEXT NOT NULL, is_admin INTEGER NOT NULL)''')
-        cursor.execute('''CREATE TABLE IF NOT EXISTS relatorios (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, nome_relatorio TEXT NOT NULL, dados_pickle BLOB NOT NULL, data_criacao TEXT)''')
-        
-        cursor.execute("PRAGMA table_info(relatorios)")
-        colunas = [col[1] for col in cursor.fetchall()]
-        if "data_criacao" not in colunas:
-            cursor.execute("ALTER TABLE relatorios ADD COLUMN data_criacao TEXT")
+def converter_para_json_safe(obj):
+    """Converte pandas Series e tipos não serializáveis em estruturas nativas em Python."""
+    if isinstance(obj, dict):
+        return {k: converter_para_json_safe(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [converter_para_json_safe(i) for i in obj]
+    elif isinstance(obj, pd.Series):
+        return {"__pd_series__": True, "data": obj.tolist()}
+    elif isinstance(obj, (np.integer, np.floating)):
+        return obj.item()
+    return obj
 
-        conn.commit()
-        cursor.execute("SELECT COUNT(*) FROM usuarios")
-        if cursor.fetchone()[0] == 0:
-            hashed_pw = hash_password("admin123")
-            cursor.execute("INSERT INTO usuarios (username, password, is_admin) VALUES (?, ?, ?)", ("admin", hashed_pw, 1))
-            conn.commit()
+def restaurar_de_json_safe(obj):
+    """Restaura pandas Series a partir da estrutura JSON."""
+    if isinstance(obj, dict):
+        if obj.get("__pd_series__") is True:
+            return pd.Series(obj["data"])
+        return {k: restaurar_de_json_safe(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [restaurar_de_json_safe(i) for i in obj]
+    return obj
+
+def carregar_dados_nuvem():
+    if "SUA_URL_AQUI" in SUPABASE_URL:
+        return None
+    try:
+        response = supabase.table("app_data").select("payload").eq("id", "main_db").execute()
+        if response.data and len(response.data) > 0:
+            payload = response.data[0]["payload"]
+            return restaurar_de_json_safe(payload)
     except Exception as e:
-        st.error(f"Erro BD: {e}")
-    finally:
-        conn.close()
+        st.error(f"Erro ao carregar dados do Supabase: {e}")
+    return None
 
-init_db()
-
-def verificar_login(username, password):
+def salvar_dados_nuvem(silencioso=False):
+    if "SUA_URL_AQUI" in SUPABASE_URL:
+        return
+    
+    dados = {
+        "usuarios": st.session_state.get("db_usuarios", {}),
+        "relatorios": st.session_state.get("db_relatorios", [])
+    }
+    
+    dados_safe = converter_para_json_safe(dados)
+    
     try:
-        username = username.strip()
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
-        cursor.execute("SELECT password, is_admin FROM usuarios WHERE username = ?", (username,))
-        row = cursor.fetchone()
-        conn.close()
-        if row and row[0] == hash_password(password):
-            return True, bool(row[1])
-    except:
-        pass
+        supabase.table("app_data").upsert({
+            "id": "main_db",
+            "payload": dados_safe,
+            "updated_at": datetime.datetime.now().isoformat()
+        }).execute()
+        
+        if not silencioso:
+            st.toast('Dados salvos no Supabase com sucesso!', icon='✅')
+    except Exception as e:
+        st.error(f"Erro ao salvar no Supabase: {e}")
+
+# --- INICIALIZAÇÃO DE DADOS DA NUVEM ---
+if "nuvem_iniciada" not in st.session_state:
+    dados_nuvem = carregar_dados_nuvem()
+    if dados_nuvem:
+        st.session_state["db_usuarios"] = dados_nuvem.get("usuarios", {})
+        st.session_state["db_relatorios"] = dados_nuvem.get("relatorios", [])
+    else:
+        st.session_state["db_usuarios"] = {
+            "admin": {"password": hash_password("admin123"), "is_admin": True}
+        }
+        st.session_state["db_relatorios"] = []
+    st.session_state["nuvem_iniciada"] = True
+
+# --- GERENCIAMENTO DE USUÁRIOS E RELATÓRIOS ---
+def verificar_login(username, password):
+    username = username.strip()
+    users = st.session_state.get("db_usuarios", {})
+    if username in users:
+        if users[username]["password"] == hash_password(password):
+            return True, users[username]["is_admin"]
     return False, False
 
 def alterar_senha_usuario(username, senha_atual, nova_senha):
     username = username.strip()
     if not nova_senha.strip():
         return False, "A nova senha não pode estar em branco."
-        
+    
     ok, _ = verificar_login(username, senha_atual)
     if not ok:
         return False, "Senha atual incorreta."
         
-    try:
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
-        cursor.execute("UPDATE usuarios SET password = ? WHERE username = ?", (hash_password(nova_senha), username))
-        conn.commit()
-        conn.close()
-        return True, "Senha alterada com sucesso!"
-    except Exception as e:
-        return False, f"Erro ao alterar senha: {e}"
+    st.session_state["db_usuarios"][username]["password"] = hash_password(nova_senha)
+    salvar_dados_nuvem(silencioso=True)
+    return True, "Senha alterada com sucesso!"
 
-def cadastrar_usuario(username, password, is_admin=0):
+def cadastrar_usuario(username, password, is_admin=False):
     username = username.strip()
     if not username or not password.strip():
         return False, "Preencha usuário e senha."
-    try:
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
-        cursor.execute("SELECT username FROM usuarios WHERE username = ?", (username,))
-        if cursor.fetchone():
-            conn.close()
-            return False, "Usuário já existe."
-        cursor.execute("INSERT INTO usuarios (username, password, is_admin) VALUES (?, ?, ?)", (username, hash_password(password), 1 if is_admin else 0))
-        conn.commit()
-        conn.close()
-        return True, "Usuário cadastrado com sucesso!"
-    except Exception as e:
-        return False, f"Erro ao cadastrar: {e}"
+    if username in st.session_state["db_usuarios"]:
+        return False, "Usuário já existe."
+    
+    st.session_state["db_usuarios"][username] = {
+        "password": hash_password(password),
+        "is_admin": is_admin
+    }
+    salvar_dados_nuvem(silencioso=True)
+    return True, "Usuário cadastrado com sucesso!"
 
 def excluir_usuario(username):
     username = username.strip()
     if username == "admin":
         return False, "O usuário administrador principal não pode ser excluído."
-    try:
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM usuarios WHERE username = ?", (username,))
-        cursor.execute("DELETE FROM relatorios WHERE username = ?", (username,))
-        conn.commit()
-        conn.close()
+    if username in st.session_state["db_usuarios"]:
+        del st.session_state["db_usuarios"][username]
+        st.session_state["db_relatorios"] = [r for r in st.session_state["db_relatorios"] if r["username"] != username]
+        salvar_dados_nuvem(silencioso=True)
         return True, "Usuário e seus relatórios excluídos com sucesso!"
-    except Exception as e:
-        return False, f"Erro ao excluir: {e}"
+    return False, "Usuário não encontrado."
 
-def listar_usuarios():
-    try:
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
-        cursor.execute("SELECT username, is_admin FROM usuarios")
-        rows = cursor.fetchall()
-        conn.close()
-        return rows
-    except:
-        return []
+def salvar_relatorio_nuvem(username, nome_relatorio, estado_dict):
+    username = username.strip()
+    data_atual = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    relatorios = st.session_state["db_relatorios"]
+    atualizado = False
+    
+    for r in relatorios:
+        if r["username"] == username and r["nome_relatorio"] == nome_relatorio:
+            r["dados"] = copy.deepcopy(estado_dict)
+            r["data_criacao"] = data_atual
+            atualizado = True
+            break
+            
+    if not atualizado:
+        relatorios.append({
+            "username": username,
+            "nome_relatorio": nome_relatorio,
+            "dados": copy.deepcopy(estado_dict),
+            "data_criacao": data_atual
+        })
+        
+    salvar_dados_nuvem(silencioso=True)
+    return True
 
-def salvar_relatorio_db(username, nome_relatorio, estado_dict):
-    try:
-        import pickle
-        username = username.strip()
-        dados_blob = pickle.dumps(estado_dict)
-        data_atual = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
-        cursor.execute("SELECT id FROM relatorios WHERE username = ? AND nome_relatorio = ?", (username, nome_relatorio))
-        row = cursor.fetchone()
-        if row:
-            cursor.execute("UPDATE relatorios SET dados_pickle = ?, data_criacao = ? WHERE id = ?", (dados_blob, data_atual, row[0]))
-        else:
-            cursor.execute("INSERT INTO relatorios (username, nome_relatorio, dados_pickle, data_criacao) VALUES (?, ?, ?, ?)", (username, nome_relatorio, dados_blob, data_atual))
-        conn.commit()
-        conn.close()
-        return True
-    except Exception as e:
-        st.error(f"Erro ao salvar no banco: {e}")
-        return False
-
-def carregar_relatorio_db(username, nome_relatorio):
-    try:
-        import pickle
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
-        cursor.execute("SELECT dados_pickle FROM relatorios WHERE username = ? AND nome_relatorio = ?", (username.strip(), nome_relatorio))
-        row = cursor.fetchone()
-        conn.close()
-        if row:
-            return pickle.loads(row[0])
-    except:
-        pass
+def carregar_relatorio_nuvem(username, nome_relatorio):
+    username = username.strip()
+    for r in st.session_state["db_relatorios"]:
+        if r["username"] == username and r["nome_relatorio"] == nome_relatorio:
+            return copy.deepcopy(r["dados"])
     return None
 
-def excluir_relatorio_db(username, nome_relatorio):
-    try:
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM relatorios WHERE username = ? AND nome_relatorio = ?", (username.strip(), nome_relatorio))
-        conn.commit()
-        conn.close()
-        return True
-    except:
-        return False
+def excluir_relatorio_nuvem(username, nome_relatorio):
+    username = username.strip()
+    st.session_state["db_relatorios"] = [r for r in st.session_state["db_relatorios"] if not (r["username"] == username and r["nome_relatorio"] == nome_relatorio)]
+    salvar_dados_nuvem(silencioso=True)
+    return True
 
-def renomear_relatorio_db(username, nome_antigo, nome_novo):
-    try:
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
-        cursor.execute("UPDATE relatorios SET nome_relatorio = ? WHERE username = ? AND nome_relatorio = ?", (nome_novo, username.strip(), nome_antigo))
-        conn.commit()
-        conn.close()
-        return True
-    except:
-        return False
+def renomear_relatorio_nuvem(username, nome_antigo, nome_novo):
+    username = username.strip()
+    for r in st.session_state["db_relatorios"]:
+        if r["username"] == username and r["nome_relatorio"] == nome_antigo:
+            r["nome_relatorio"] = nome_novo
+            salvar_dados_nuvem(silencioso=True)
+            return True
+    return False
 
 def listar_meses_relatorios(username=None):
-    try:
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
-        if username:
-            cursor.execute("SELECT DISTINCT strftime('%m/%Y', data_criacao) FROM relatorios WHERE username = ? AND data_criacao IS NOT NULL ORDER BY data_criacao DESC", (username.strip(),))
-        else:
-            cursor.execute("SELECT DISTINCT strftime('%m/%Y', data_criacao) FROM relatorios WHERE data_criacao IS NOT NULL ORDER BY data_criacao DESC")
-        rows = cursor.fetchall()
-        conn.close()
-        return [r[0] for r in rows if r[0] is not None]
-    except:
-        return []
+    meses = set()
+    for r in st.session_state["db_relatorios"]:
+        if username is None or r["username"] == username:
+            try:
+                dt = datetime.datetime.strptime(r["data_criacao"], "%Y-%m-%d %H:%M:%S")
+                meses.add(dt.strftime("%m/%Y"))
+            except:
+                pass
+    return sorted(list(meses), reverse=True)
 
-def listar_relatorios_db(username=None, mes_ano=None):
-    try:
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
-        query = "SELECT nome_relatorio, username, data_criacao FROM relatorios WHERE 1=1"
-        params = []
-        if username:
-            query += " AND username = ?"
-            params.append(username.strip())
+def listar_relatorios_nuvem(username=None, mes_ano=None):
+    resultados = []
+    for r in st.session_state["db_relatorios"]:
+        cond_user = (username is None or r["username"] == username)
+        cond_mes = True
         if mes_ano:
-            query += " AND strftime('%m/%Y', data_criacao) = ?"
-            params.append(mes_ano)
-        query += " ORDER BY id DESC"
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-        conn.close()
-        return rows
-    except:
-        return []
+            try:
+                dt = datetime.datetime.strptime(r["data_criacao"], "%Y-%m-%d %H:%M:%S")
+                cond_mes = (dt.strftime("%m/%Y") == mes_ano)
+            except:
+                cond_mes = False
+        if cond_user and cond_mes:
+            resultados.append((r["nome_relatorio"], r["username"], r["data_criacao"]))
+    return resultados
 
 # --- CONTROLE DE SESSÃO DE LOGIN ---
 if "logged_in" not in st.session_state: st.session_state["logged_in"] = False
@@ -314,7 +321,7 @@ if "current_report_name" not in st.session_state: st.session_state.update({"curr
 
 def reset_app():
     st.session_state["reset_key"] += 1
-    keys_to_keep = ["logged_in", "username", "is_admin", "reset_key"]
+    keys_to_keep = ["logged_in", "username", "is_admin", "reset_key", "db_usuarios", "db_relatorios", "nuvem_iniciada"]
     for k in list(st.session_state.keys()):
         if k not in keys_to_keep: del st.session_state[k]
     st.session_state.update({"dados_geral": {}, "dados_adm": {}, "dados_med": {}, "arquivos_data": {}, "current_report_name": "", "tipo_estudo_global": "Veículos Elétricos (VE)"})
@@ -391,7 +398,7 @@ if st.session_state.get("show_modal_del_rel", False):
         c1, c2 = st.columns(2)
         if c1.button("Confirmar Exclusão", type="primary", use_container_width=True):
             if verificar_login(st.session_state["username"], p_admin)[0]:
-                if excluir_relatorio_db(dono_target, rel_target):
+                if excluir_relatorio_nuvem(dono_target, rel_target):
                     if st.session_state["current_report_name"] == rel_target: st.session_state["current_report_name"] = ""
                     st.session_state["show_modal_del_rel"] = False
                     st.toast("Relatório apagado com sucesso!", icon="🗑️")
@@ -426,7 +433,7 @@ if st.session_state.get("show_modal_del_usr", False):
     dialog_del_usr()
 
 st.sidebar.markdown("---")
-lista_db = listar_relatorios_db(user_filtro, mes_ano=mes_selecionado)
+lista_db = listar_relatorios_nuvem(user_filtro, mes_ano=mes_selecionado)
 
 st.sidebar.markdown(f"📂 **Relatórios de {mes_selecionado}:**")
 
@@ -441,9 +448,9 @@ else:
     col_b1, col_b2 = st.sidebar.columns(2)
     with col_b1:
         if st.button("📂 Carregar", use_container_width=True, key="btn_load_action"):
-            report_data = carregar_relatorio_db(dono, rel_selecionado)
+            report_data = carregar_relatorio_nuvem(dono, rel_selecionado)
             if report_data:
-                keys_to_keep = ["logged_in", "username", "is_admin", "reset_key", "selectbox_historico", "sb_mes_filtro"]
+                keys_to_keep = ["logged_in", "username", "is_admin", "reset_key", "selectbox_historico", "sb_mes_filtro", "db_usuarios", "db_relatorios", "nuvem_iniciada"]
                 for k in list(st.session_state.keys()):
                     if k not in keys_to_keep: del st.session_state[k]
                 for k, v in report_data.items(): st.session_state[k] = copy.deepcopy(v)
@@ -472,9 +479,9 @@ if st.session_state["is_admin"]:
             else: st.error(msg)
         st.markdown("---")
         st.markdown("**Usuários Cadastrados:**")
-        for u, adm in listar_usuarios():
+        for u, details in st.session_state["db_usuarios"].items():
             col_u1, col_u2 = st.columns([3, 1])
-            col_u1.text(f"{u} {'(Admin)' if adm else ''}")
+            col_u1.text(f"{u} {'(Admin)' if details.get('is_admin') else ''}")
             if u != "admin" and col_u2.button("X", key=f"del_u_{u}"):
                 st.session_state["target_del_usr"] = u
                 st.session_state["show_modal_del_usr"] = True
@@ -1330,7 +1337,7 @@ with tab4:
                     st.error("Senha incorreta!")
                 else:
                     if n_atual != "":
-                        renomear_relatorio_db(st.session_state["username"], n_atual, novo_nome_input)
+                        renomear_relatorio_nuvem(st.session_state["username"], n_atual, novo_nome_input)
                     st.session_state["current_report_name"] = novo_nome_input
                     st.toast("Nome do relatório alterado com sucesso!", icon="✏️")
                     st.rerun()
@@ -1339,17 +1346,17 @@ with tab4:
         c_s1, c_s2 = st.columns([3, 1])
         c_s1.info(f"Relatório Atual: **{st.session_state.get('current_report_name', 'Sem nome definido')}**")
         
-        if c_s2.button("💾 SalvarProgresso", use_container_width=True, type="primary"):
+        if c_s2.button("💾 Salvar Progresso", use_container_width=True, type="primary"):
             nome_salvar = st.session_state.get("current_report_name", "")
             if not nome_salvar:
                 st.warning("⚠️ O relatório precisa ter um nome antes de ser salvo.")
             else:
                 est_salvo = {}
-                keys_to_skip = ["logged_in", "username", "is_admin", "reset_key", "selectbox_historico", "sb_mes_filtro"]
+                keys_to_skip = ["logged_in", "username", "is_admin", "reset_key", "selectbox_historico", "sb_mes_filtro", "db_usuarios", "db_relatorios", "nuvem_iniciada"]
                 for chave, valor in st.session_state.items():
                     if chave not in keys_to_skip and not chave.startswith("FormSubmitter") and not chave.startswith("file_") and not chave.startswith("btn_") and not chave.startswith("adm_") and not chave.startswith("show_modal_"):
                         est_salvo[chave] = copy.deepcopy(valor)
                 
-                if salvar_relatorio_db(st.session_state["username"], nome_salvar, est_salvo):
-                    st.toast(f"Relatório '{nome_salvar}' salvo na sua conta!", icon="✅")
+                if salvar_relatorio_nuvem(st.session_state["username"], nome_salvar, est_salvo):
+                    st.toast(f"Relatório '{nome_salvar}' salvo na nuvem!", icon="✅")
                     st.rerun()
