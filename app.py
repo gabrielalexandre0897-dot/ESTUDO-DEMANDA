@@ -12,7 +12,7 @@ from supabase import create_client, Client
 st.set_page_config(page_title="Estudo de Demanda - Veículos Elétricos & Ar Condicionado", page_icon="⚡", layout="wide")
 
 # --- CONFIGURAÇÃO DO SUPABASE ---
-SUPABASE_URL = "https://ykfqurzvmjbtuzeyoytt.supabase.co"
+SUPABASE_URL = "https://ykfqurzvmjbtuzeyoytt.supabase.co/rest/v1/"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlrZnF1cnp2bWpidHV6ZXlveXR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU3Nzg0MTUsImV4cCI6MjEwMTM1NDQxNX0.KnqajZeEUK04RkPAY-eRbfq-yYHeKaMBapfffyidO14"
 
 @st.cache_resource
