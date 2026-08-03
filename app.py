@@ -11,9 +11,9 @@ from supabase import create_client, Client
 # Configuração da Página
 st.set_page_config(page_title="Estudo de Demanda - Veículos Elétricos & Ar Condicionado", page_icon="⚡", layout="wide")
 
-# --- CONFIGURAÇÃO DO SUPABASE (BANCO DE DADOS GRATUITO E ILIMITADO) ---
-SUPABASE_URL = "https://eekdtrtfclwqjgwocwnu.supabase.co"      # Substitua pela sua URL do Supabase
-SUPABASE_KEY = "sb_publishable_pBV6SsKDWPSW-1cyB9Oj9Q_Z-Z6JJp0"            # Substitua pela sua API Key (anon/public)
+# --- CONFIGURAÇÃO DO SUPABASE ---
+SUPABASE_URL = "https://eekdtrtfclwqjgwocwnu.supabase.co"
+SUPABASE_KEY = "sb_publishable_pBV6SsKDWPSW-1cyB9Oj9Q_Z-Z6JJp0"
 
 @st.cache_resource
 def init_supabase() -> Client:
@@ -58,7 +58,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Função auxiliar para gerar configuração de download de imagem com nome personalizado
+# Função auxiliar para gerar configuração de download de imagem
 def get_config_img(nome_arquivo):
     nome_limpo = "".join(c for c in nome_arquivo if c.isalnum() or c in (" ", "_", "-")).strip().replace(" ", "_")
     if not nome_limpo:
@@ -74,27 +74,33 @@ def get_config_img(nome_arquivo):
         "displayModeBar": True
     }
 
-# --- FUNÇÕES DE SEGURANÇA E BIND NUVEM ---
+# --- FUNÇÕES DE SEGURANÇA E CONVERSÃO JSON SAFE ---
 def hash_password(password):
     return hashlib.sha256(password.strip().encode()).hexdigest()
 
 def converter_para_json_safe(obj):
-    """Converte pandas Series e tipos não serializáveis em estruturas nativas em Python."""
+    """Converte pandas Series, numpy e tipos não serializáveis em estruturas nativas do Python/JSON."""
     if isinstance(obj, dict):
-        return {k: converter_para_json_safe(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
+        return {str(k): converter_para_json_safe(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
         return [converter_para_json_safe(i) for i in obj]
     elif isinstance(obj, pd.Series):
-        return {"__pd_series__": True, "data": obj.tolist()}
-    elif isinstance(obj, (np.integer, np.floating)):
-        return obj.item()
+        return {"__pd_series__": True, "data": [converter_para_json_safe(x) for x in obj.tolist()]}
+    elif isinstance(obj, (np.integer, int)):
+        return int(obj)
+    elif isinstance(obj, (np.floating, float)):
+        return float(obj)
+    elif isinstance(obj, (np.ndarray,)):
+        return [converter_para_json_safe(x) for x in obj.tolist()]
+    elif isinstance(obj, (datetime.date, datetime.datetime)):
+        return obj.isoformat()
     return obj
 
 def restaurar_de_json_safe(obj):
-    """Restaura pandas Series a partir da estrutura JSON."""
+    """Restaura pandas Series e estruturas a partir do dicionário JSON."""
     if isinstance(obj, dict):
         if obj.get("__pd_series__") is True:
-            return pd.Series(obj["data"])
+            return pd.Series(restaurar_de_json_safe(obj["data"]))
         return {k: restaurar_de_json_safe(v) for k, v in obj.items()}
     elif isinstance(obj, list):
         return [restaurar_de_json_safe(i) for i in obj]
@@ -1092,7 +1098,7 @@ Portanto, conclui-se que existe uma potência disponível de {fmt(p_disp_menor_k
         [f"{i_pico_r_m:.1f}", f"{p_apar_r_m/1000:.1f}", f"{p_apar_r_m_proj/1000:.1f}", f"{i_pico_r_proj_m:.1f}", f"{i_cond_total_m:.1f}", f"{i_prot_total_m:.1f}", stat_r_m],
         [f"{i_pico_s_m:.1f}", f"{p_apar_s_m/1000:.1f}", f"{p_apar_s_m_proj/1000:.1f}", f"{i_pico_s_proj_m:.1f}", f"{i_cond_total_m:.1f}", f"{i_prot_total_m:.1f}", stat_s_m],
         [f"{i_pico_t_m:.1f}", f"{p_apar_t_m/1000:.1f}", f"{p_apar_t_m_proj/1000:.1f}", f"{i_pico_t_proj_m:.1f}", f"{i_cond_total_m:.1f}", f"{i_prot_total_m:.1f}", stat_t_m],
-        ["Cálculo Proporcional", f"Total: {p_apar_r_m + p_apar_s_m + p_apar_t_m/1000:.1f} kVA", f"Total: {p_apar_total_m_proj/1000:.1f} kVA", "Cálculo/Fase", "L. Max Condutor", "L. Max Proteção", "Avaliação"]
+        ["Cálculo Proporcional", f"Total: {(p_apar_r_m + p_apar_s_m + p_apar_t_m)/1000:.1f} kVA", f"Total: {p_apar_total_m_proj/1000:.1f} kVA", "Cálculo/Fase", "L. Max Condutor", "L. Max Proteção", "Avaliação"]
     ]
 
     st.markdown("---")
