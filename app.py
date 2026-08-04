@@ -107,7 +107,7 @@ def restaurar_de_json_safe(obj):
     return obj
 
 def carregar_dados_nuvem():
-    if "SUA_URL_AQUI" in SUPABASE_URL:
+    if "SEU_PROJETO_CORRETO" in SUPABASE_URL or "SUA_URL_AQUI" in SUPABASE_URL:
         return None
     try:
         response = supabase.table("app_data").select("payload").eq("id", "main_db").execute()
@@ -119,7 +119,7 @@ def carregar_dados_nuvem():
     return None
 
 def salvar_dados_nuvem(silencioso=False):
-    if "SUA_URL_AQUI" in SUPABASE_URL:
+    if "SEU_PROJETO_CORRETO" in SUPABASE_URL or "SUA_URL_AQUI" in SUPABASE_URL:
         return
     
     dados = {
@@ -140,6 +140,7 @@ def salvar_dados_nuvem(silencioso=False):
             st.toast('Dados salvos no Supabase com sucesso!', icon='✅')
     except Exception as e:
         st.error(f"Erro ao salvar no Supabase: {e}")
+        raise e # Repassa o erro para poder reverter ações se necessário
 
 # --- INICIALIZAÇÃO DE DADOS DA NUVEM ---
 if "nuvem_iniciada" not in st.session_state:
@@ -155,6 +156,13 @@ if "nuvem_iniciada" not in st.session_state:
     st.session_state["nuvem_iniciada"] = True
 
 # --- GERENCIAMENTO DE USUÁRIOS E RELATÓRIOS ---
+def _sincronizar_estado_local():
+    """Busca a versão mais recente da nuvem em milissegundos antes de qualquer alteração, evitando que um usuário apague o dado do outro sem querer."""
+    dados_nuvem = carregar_dados_nuvem()
+    if dados_nuvem:
+        st.session_state["db_usuarios"] = dados_nuvem.get("usuarios", {})
+        st.session_state["db_relatorios"] = dados_nuvem.get("relatorios", [])
+
 def verificar_login(username, password):
     username = username.strip()
     users = st.session_state.get("db_usuarios", {})
@@ -168,18 +176,30 @@ def alterar_senha_usuario(username, senha_atual, nova_senha):
     if not nova_senha.strip():
         return False, "A nova senha não pode estar em branco."
     
+    _sincronizar_estado_local() # Sincroniza antes de alterar
+    
     ok, _ = verificar_login(username, senha_atual)
     if not ok:
         return False, "Senha atual incorreta."
         
+    senha_antiga = st.session_state["db_usuarios"][username]["password"]
     st.session_state["db_usuarios"][username]["password"] = hash_password(nova_senha)
-    salvar_dados_nuvem(silencioso=True)
-    return True, "Senha alterada com sucesso!"
+    
+    try:
+        salvar_dados_nuvem(silencioso=True)
+        return True, "Senha alterada com sucesso!"
+    except Exception:
+        # Reverte a senha caso o salvamento falhe
+        st.session_state["db_usuarios"][username]["password"] = senha_antiga
+        return False, "Erro ao salvar no banco. Verifique a URL do Supabase."
 
 def cadastrar_usuario(username, password, is_admin=False):
     username = username.strip()
     if not username or not password.strip():
         return False, "Preencha usuário e senha."
+    
+    _sincronizar_estado_local() # Sincroniza antes de adicionar
+    
     if username in st.session_state["db_usuarios"]:
         return False, "Usuário já existe."
     
@@ -187,13 +207,21 @@ def cadastrar_usuario(username, password, is_admin=False):
         "password": hash_password(password),
         "is_admin": is_admin
     }
-    salvar_dados_nuvem(silencioso=True)
-    return True, "Usuário cadastrado com sucesso!"
+    
+    try:
+        salvar_dados_nuvem(silencioso=True)
+        return True, "Usuário cadastrado com sucesso!"
+    except Exception:
+        del st.session_state["db_usuarios"][username]
+        return False, "Erro ao salvar no banco. Verifique a URL do Supabase."
 
 def excluir_usuario(username):
     username = username.strip()
     if username == "admin":
         return False, "O usuário administrador principal não pode ser excluído."
+    
+    _sincronizar_estado_local() # Sincroniza antes de excluir
+    
     if username in st.session_state["db_usuarios"]:
         del st.session_state["db_usuarios"][username]
         st.session_state["db_relatorios"] = [r for r in st.session_state["db_relatorios"] if r["username"] != username]
@@ -204,6 +232,8 @@ def excluir_usuario(username):
 def salvar_relatorio_nuvem(username, nome_relatorio, estado_dict):
     username = username.strip()
     data_atual = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    _sincronizar_estado_local() # Sincroniza antes de salvar relatório
     
     relatorios = st.session_state["db_relatorios"]
     atualizado = False
@@ -235,12 +265,18 @@ def carregar_relatorio_nuvem(username, nome_relatorio):
 
 def excluir_relatorio_nuvem(username, nome_relatorio):
     username = username.strip()
+    
+    _sincronizar_estado_local() # Sincroniza antes de excluir
+    
     st.session_state["db_relatorios"] = [r for r in st.session_state["db_relatorios"] if not (r["username"] == username and r["nome_relatorio"] == nome_relatorio)]
     salvar_dados_nuvem(silencioso=True)
     return True
 
 def renomear_relatorio_nuvem(username, nome_antigo, nome_novo):
     username = username.strip()
+    
+    _sincronizar_estado_local() # Sincroniza antes de renomear
+    
     for r in st.session_state["db_relatorios"]:
         if r["username"] == username and r["nome_relatorio"] == nome_antigo:
             r["nome_relatorio"] = nome_novo
@@ -1363,6 +1399,10 @@ with tab4:
                     if chave not in keys_to_skip and not chave.startswith("FormSubmitter") and not chave.startswith("file_") and not chave.startswith("btn_") and not chave.startswith("adm_") and not chave.startswith("show_modal_"):
                         est_salvo[chave] = copy.deepcopy(valor)
                 
-                if salvar_relatorio_nuvem(st.session_state["username"], nome_salvar, est_salvo):
-                    st.toast(f"Relatório '{nome_salvar}' salvo na nuvem!", icon="✅")
-                    st.rerun()
+                try:
+                    salvou_ok = salvar_relatorio_nuvem(st.session_state["username"], nome_salvar, est_salvo)
+                    if salvou_ok:
+                        st.toast(f"Relatório '{nome_salvar}' salvo na nuvem!", icon="✅")
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"Não foi possível salvar o relatório: {e}")
