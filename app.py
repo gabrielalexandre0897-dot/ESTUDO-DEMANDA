@@ -12,8 +12,8 @@ from supabase import create_client, Client
 st.set_page_config(page_title="Estudo de Demanda - Veículos Elétricos & Ar Condicionado", page_icon="⚡", layout="wide")
 
 # --- CONFIGURAÇÃO DO SUPABASE ---
-SUPABASE_URL = "https://SEU_PROJETO_CORRETO.supabase.co" # 🔴 SUBSTITUA AQUI
-SUPABASE_KEY = "SUA_CHAVE_PÚBLICA_ANON"                  # 🔴 SUBSTITUA AQUI
+SUPABASE_URL = "https://ykfqurzvmjbtuzeyoytt.supabase.co" # 🔴 SUBSTITUA AQUI
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlrZnF1cnp2bWpidHV6ZXlveXR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU3Nzg0MTUsImV4cCI6MjEwMTM1NDQxNX0.KnqajZeEUK04RkPAY-eRbfq-yYHeKaMBapfffyidO14"                  # 🔴 SUBSTITUA AQUI
 
 @st.cache_resource
 def init_supabase() -> Client:
